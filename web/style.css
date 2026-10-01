@@ -1,0 +1,381 @@
+:root {
+  --bg: #0f1115;
+  --card: #191c23;
+  --card-2: #21252e;
+  --line: #2b313c;
+  --text: #e8ecf1;
+  --muted: #8b95a5;
+  --accent: #4f8cff;
+  --accent-dim: #2f5ba8;
+  --danger: #e5534b;
+  --ok: #3fb950;
+  --radius: 14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+        "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  padding: 0 12px calc(24px + env(safe-area-inset-bottom));
+}
+
+button, input, textarea { font-family: inherit; color: inherit; }
+
+/* ------------------------------------------------------------------ 顶栏 */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 -12px 12px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
+  background: rgba(15, 17, 21, .88);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-weight: 700;
+  letter-spacing: .5px;
+  text-align: left;
+  cursor: pointer;
+}
+.brand:active { opacity: .65; }
+.brand-mark { color: var(--muted); font-size: 15px; }
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--card-2);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.status i { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); }
+.status.online { color: var(--ok); }
+.status.online i { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+.status.offline { color: var(--danger); }
+.status.offline i { background: var(--danger); }
+
+/* ------------------------------------------------------------------ 卡片 */
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.card-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+.hint { font-size: 11px; color: var(--muted); }
+
+/* ------------------------------------------------------------------ 按钮 */
+.icon-btn, .pill, .btn {
+  border: 1px solid var(--line);
+  background: var(--card-2);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: transform .06s ease, background .15s ease, border-color .15s ease;
+  user-select: none;
+}
+.icon-btn:active, .pill:active, .btn:active { transform: scale(.96); }
+
+.icon-btn { width: 32px; height: 32px; font-size: 15px; line-height: 1; }
+.icon-btn.big { width: 56px; height: 56px; font-size: 22px; border-radius: 14px; }
+.icon-btn.huge { width: 76px; height: 76px; font-size: 28px; border-radius: 20px; }
+.icon-btn.primary, .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.pill { padding: 5px 12px; font-size: 12px; border-radius: 999px; color: var(--muted); }
+.pill.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.btn { flex: 1; padding: 12px 8px; font-size: 14px; }
+.btn.danger { color: var(--danger); border-color: #4a2b2b; }
+
+.btn-row { display: flex; gap: 8px; margin-top: 10px; }
+
+/* ------------------------------------------------------------------ 音量 */
+.vol-row { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 12px; }
+.vol-value { font-size: 30px; font-weight: 700; min-width: 96px; text-align: center; font-variant-numeric: tabular-nums; }
+.vol-value.muted { color: var(--danger); }
+
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--card-2);
+  outline: none;
+}
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: none;
+  margin-top: -10px;
+  box-shadow: 0 2px 8px rgba(0,0,0,.5);
+}
+.slider::-moz-range-thumb {
+  width: 28px; height: 28px; border: none; border-radius: 50%; background: var(--accent);
+}
+.slider::-webkit-slider-runnable-track { height: 8px; border-radius: 999px; }
+
+/* ------------------------------------------------------------------ 媒体 */
+/* 一排五个键。图标统一用内联 SVG：早先用的是 ⏪⏮⏵⏭⏩ 这些字符，浏览器会把
+   其中几个按彩色 emoji（Segoe UI Emoji）渲染，字重、字号、垂直基线都跟剩下的
+   对不上，一排看过去像两套图标。SVG 用 currentColor 取色，颜色和大小都由这里定。
+   窄屏靠 flex 一起缩，宽屏封顶不会撑开成一排大方块。 */
+.media-row { display: flex; align-items: center; justify-content: center; gap: 8px; }
+.media-row .icon-btn {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+  max-width: 56px;
+  height: 52px;
+  padding: 0;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.media-row .icon-btn svg { width: 24px; height: 24px; display: block; fill: currentColor; }
+.media-row .icon-btn.huge {
+  flex: 1.4 1 0;
+  max-width: 72px;
+  height: 68px;
+  border-radius: 16px;
+}
+.media-row .icon-btn.huge svg { width: 32px; height: 32px; }
+/* 播放和暂停两个图标都在按钮里，靠 playing 类切换 */
+.media-row .icon-btn .ic-pause { display: none; }
+.media-row .icon-btn.playing .ic-play { display: none; }
+.media-row .icon-btn.playing .ic-pause { display: block; }
+/* 当前播放器没实现的操作（网易云音乐不会跳转、Edge 放单个视频时无处切歌）
+   把对应的键灰掉，别让人以为按坏了 */
+.media-row .icon-btn:disabled { opacity: .35; cursor: default; }
+
+/* -------------------------------------------------------------- 设备列表 */
+.devices { display: flex; flex-direction: column; gap: 8px; }
+.device {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-2);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+.device.active { border-color: var(--accent); background: rgba(79,140,255,.12); }
+.device .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+.device.active .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+.device .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.empty { color: var(--muted); font-size: 13px; padding: 8px 2px; }
+
+/* ---------------------------------------------------------------- 触摸板 */
+.pad {
+  position: relative;
+  height: 48vh;
+  border-radius: 12px;
+  border: 1px dashed var(--line);
+  background: linear-gradient(180deg, #14171d, #10131a);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  overflow: hidden;
+}
+.pad.pressed { border-color: var(--accent); background: linear-gradient(180deg, #161b26, #11151d); }
+.pad-tip {
+  position: absolute;
+  left: 0; right: 0; bottom: 10px;
+  text-align: center;
+  font-size: 11px;
+  color: #5b6472;
+  padding: 0 14px;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------- 整页浮层（触摸板/屏幕） */
+.page {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: calc(10px + env(safe-area-inset-top)) 12px calc(12px + env(safe-area-inset-bottom));
+}
+.page-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.page-title { font-size: 15px; font-weight: 600; }
+.head-actions { display: flex; gap: 8px; }
+.page .pad.big { flex: 1; height: auto; }
+
+.sens { display: flex; align-items: center; gap: 12px; margin-top: 12px; font-size: 12px; color: var(--muted); }
+.sens input { flex: 1; }
+.sens output { min-width: 42px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ---------------------------------------------------------------- 输入框 */
+textarea {
+  width: 100%;
+  resize: vertical;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  font-size: 16px; /* iOS 上小于 16px 会触发缩放 */
+  outline: none;
+}
+textarea:focus { border-color: var(--accent); }
+
+/* ---------------------------------------------------------------- 提示条 */
+.toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(24px + env(safe-area-inset-bottom));
+  transform: translate(-50%, 20px);
+  background: #2b313c;
+  border: 1px solid var(--line);
+  color: var(--text);
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  max-width: 88vw;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .2s, transform .2s;
+  z-index: 60;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.error { background: #3a1f1f; border-color: #5c2b2b; }
+
+/* ---------------------------------------------------------------- 弹层 */
+.sheet {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: rgba(0,0,0,.6);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+.sheet-inner {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 18px;
+  width: 100%;
+  max-width: 520px;
+  max-height: 82vh;
+  overflow: auto;
+}
+.sheet h2 { margin: 0 0 12px; font-size: 16px; }
+.sheet ul { margin: 0 0 16px; padding-left: 18px; color: var(--muted); font-size: 13px; }
+.sheet li { margin-bottom: 8px; }
+.sheet b { color: var(--text); }
+
+.hidden { display: none !important; }
+
+/* 浮层打开时锁住背后的主页：不然在浮层上滑动会带着下面的卡片一起滚。
+   只给 html/body 设 overflow:hidden 在 Chromium 上挡不住滚轮，实测仍会带动
+   根滚动容器，所以按下把 body 变成 position:fixed 并把它整体上移 scrollY，
+   视觉上位置不变但整页已不可滚动；top 由 JS 按当前滚动位置算。
+   浮层自己内部要能滚（说明、屏幕列表），所以只掐掉 scroll chaining。 */
+html.modal-open body {
+  position: fixed;
+  left: 0;
+  right: 0;
+  width: 100%;
+  overflow: hidden;
+}
+.sheet-inner, .shots { overscroll-behavior: contain; }
+
+/* -------------------------------------------------------------- 菜单 */
+.menu-item {
+  display: block;
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 12px 14px;
+  text-align: left;
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.menu-item:active { transform: scale(.99); border-color: var(--accent); }
+.menu-title { display: block; font-size: 15px; font-weight: 600; }
+.menu-desc { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+
+/* ------------------------------------------------------------ 按键面板 */
+.key-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.key {
+  flex: 1 1 60px;
+  padding: 10px 6px;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--card-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.key:active, .key.hit { transform: scale(.94); border-color: var(--accent); color: var(--accent); }
+
+/* ---------------------------------------------------------------- 屏幕 */
+.shots {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.shots .card { margin: 0; }
+.shot-img {
+  display: block;
+  width: 100%;
+  height: auto;
+  min-height: 60px;
+  border-radius: 10px;
+  background: var(--card-2);
+}

@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# PyInstaller 的中间产物与最终产物（要发布的话走 GitHub Release 的附件，不进仓库）
+build/
+dist/
+
+# 日志
+*.log
+
+# 编辑器 / 系统
+.trae/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# 发布用的临时打包目录
+release/

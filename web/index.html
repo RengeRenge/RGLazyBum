@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0f1115">
+<meta name="mobile-web-app-capable" content="yes">
+<title>懒狗 遥控</title>
+<!-- 图标：咸鱼（和托盘、安卓启动图标同一套图形） -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect x='3' y='3' width='58' height='58' rx='15' fill='%231f7ae0'/%3E%3Cpath d='M21 32 7 19v26z' fill='%23fff'/%3E%3Cpath d='M25 22l8-9 9 9z' fill='%23fff'/%3E%3Cellipse cx='35' cy='32.5' rx='19' ry='13.5' fill='%23fff'/%3E%3Ccircle cx='44' cy='30' r='3' fill='%231f7ae0'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+<header class="topbar">
+  <button id="menuBtn" class="brand" type="button" aria-label="打开菜单">
+    <span class="brand-mark" aria-hidden="true">☰</span>
+    <svg width="18" height="18" viewBox="0 0 64 64" aria-hidden="true">
+      <path d="M21 32 7 19v26z M25 22l8-9 9 9z" fill="#fff"/>
+      <ellipse cx="35" cy="32.5" rx="19" ry="13.5" fill="#fff"/>
+      <circle cx="44" cy="30" r="3" fill="#0f1115"/>
+    </svg>
+    <span>懒狗</span>
+  </button>
+  <div id="status" class="status offline"><i></i><span>连接中…</span></div>
+</header>
+
+<main>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>音量</h2>
+      <button id="muteBtn" class="pill">静音</button>
+    </div>
+    <div class="vol-row">
+      <button class="icon-btn big" data-vol-step="-0.05" aria-label="音量减">−</button>
+      <output id="volValue" class="vol-value">--</output>
+      <button class="icon-btn big" data-vol-step="0.05" aria-label="音量加">+</button>
+    </div>
+    <input id="volSlider" class="slider" type="range" min="0" max="100" step="1" value="50">
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>媒体</h2><span id="mediaHint" class="hint"></span></div>
+    <div class="media-row">
+      <button id="seekBackBtn" class="icon-btn big" aria-label="快退 10 秒">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/></svg>
+      </button>
+      <button id="prevBtn" class="icon-btn big" aria-label="上一曲">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/></svg>
+      </button>
+      <button id="playBtn" class="icon-btn huge primary" aria-label="播放/暂停">
+        <svg class="ic-play" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+        <svg class="ic-pause" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+      </button>
+      <button id="nextBtn" class="icon-btn big" aria-label="下一曲">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/></svg>
+      </button>
+      <button id="seekFwdBtn" class="icon-btn big" aria-label="快进 10 秒">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/></svg>
+      </button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>键盘输入</h2><span class="hint">输入到电脑当前焦点窗口</span></div>
+    <textarea id="textInput" rows="3" placeholder="在这里打字，然后点发送…" autocapitalize="off" autocomplete="off" spellcheck="false"></textarea>
+    <div id="keyRow" class="key-row">
+      <button class="key" type="button" data-key="enter">回车</button>
+      <button class="key" type="button" data-key="backspace">⌫ 退格</button>
+      <button class="key" type="button" data-key="space">空格</button>
+      <button class="key" type="button" data-key="tab">Tab</button>
+      <button class="key" type="button" data-key="esc">Esc</button>
+      <button class="key" type="button" data-key="left">←</button>
+      <button class="key" type="button" data-key="down">↓</button>
+      <button class="key" type="button" data-key="up">↑</button>
+      <button class="key" type="button" data-key="right">→</button>
+      <button class="key" type="button" data-key="home">Home</button>
+      <button class="key" type="button" data-key="end">End</button>
+      <button class="key" type="button" data-key="pageup">PgUp</button>
+      <button class="key" type="button" data-key="pagedown">PgDn</button>
+      <button class="key" type="button" data-key="delete">Del</button>
+    </div>
+    <div class="btn-row">
+      <button id="sendTextBtn" class="btn primary">发送</button>
+      <button id="clearTextBtn" class="btn">清空</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head">
+      <h2>音频输出</h2>
+      <button id="refreshAudio" class="pill">刷新</button>
+    </div>
+    <div id="devices" class="devices"><div class="empty">加载中…</div></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>窗口</h2><span class="hint">Win+Shift+方向键</span></div>
+    <div class="btn-row">
+      <button class="btn" data-window="left">← 移到左屏</button>
+      <button class="btn" data-window="right">移到右屏 →</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>电源</h2></div>
+    <div class="btn-row">
+      <button class="btn" data-power="monitor_off">关闭显示器</button>
+      <button class="btn" data-power="wake">唤醒屏幕</button>
+    </div>
+    <div class="btn-row">
+      <button class="btn" data-power="lock">锁定</button>
+      <button class="btn" data-power="sleep">睡眠</button>
+      <button class="btn danger" data-power="hibernate">休眠</button>
+    </div>
+  </section>
+
+</main>
+
+<div id="toast" class="toast"></div>
+
+<div id="menuOverlay" class="sheet hidden">
+  <div class="sheet-inner">
+    <h2>菜单</h2>
+    <button class="menu-item" type="button" data-page="pad">
+      <span class="menu-title">触摸板</span>
+      <span class="menu-desc">移动光标 · 左中右键 · 调灵敏度</span>
+    </button>
+    <button class="menu-item" type="button" data-page="screen">
+      <span class="menu-title">屏幕</span>
+      <span class="menu-desc">看电脑画面 · 多显示器分块</span>
+    </button>
+    <button class="menu-item" type="button" data-page="help">
+      <span class="menu-title">使用说明</span>
+      <span class="menu-desc">连接方式 · 外网访问 · 各项功能</span>
+    </button>
+    <button id="closeMenuBtn" class="btn" type="button">关闭</button>
+  </div>
+</div>
+
+<div id="padPage" class="page hidden">
+  <div class="page-head">
+    <span class="page-title">触摸板</span>
+    <button id="closePadBtn" class="pill" type="button">关闭</button>
+  </div>
+  <div id="padBig" class="pad big"></div>
+  <div class="pad-tip">单指滑动移动光标 · 轻点＝左键 · 双指轻点＝右键 · 双指上下滑动＝滚轮</div>
+  <div class="btn-row">
+    <button class="btn" data-mouse="left">左键</button>
+    <button class="btn" data-mouse="right">右键</button>
+    <button class="btn" data-mouse="middle">中键</button>
+  </div>
+  <label class="sens">
+    <span>灵敏度</span>
+    <input id="sens" type="range" min="0.5" max="5" step="0.1" value="2">
+    <output id="sensValue">2.0×</output>
+  </label>
+</div>
+
+<div id="screenPage" class="page hidden">
+  <div class="page-head">
+    <span class="page-title">屏幕</span>
+    <div class="head-actions">
+      <button id="shotAuto" class="pill" type="button">自动</button>
+      <button id="shotRefresh" class="pill" type="button">刷新</button>
+      <button id="closeScreenBtn" class="pill" type="button">关闭</button>
+    </div>
+  </div>
+  <div id="shots" class="shots"><div class="empty">加载中…</div></div>
+</div>
+
+<div id="helpOverlay" class="sheet hidden">
+  <div class="sheet-inner">
+    <h2>使用说明</h2>
+    <ul>
+      <li>手机和电脑连同一个局域网即可（同一路由器 / 同一 Wi-Fi）。</li>
+      <li>页面由电脑上的后台程序提供（任务栏小图标），退出那个程序网页就会失效；换过端口后要重新扫码。</li>
+      <li>想从外网控制，先在托盘菜单打开 <b>IPv6 外网访问</b>，然后扫<b>含 token 的外网二维码</b>；token 只出现在链接里一次，之后浏览器自己记住。局域网访问不需要 token。</li>
+      <li>点左上角<b>标题</b>叫出菜单：触摸板、屏幕、使用说明都在里面。</li>
+      <li><b>触摸板</b>：单指滑动移动光标，轻点＝左键，双指轻点＝右键，双指上下滑动＝滚轮；灵敏度可调。</li>
+      <li><b>屏幕</b>：一块显示器一个模块，点「刷新」重新抓图，点「自动」每 2 秒自动更新（费流量，外网慎用）。</li>
+      <li><b>媒体</b>：中间那个大按钮是播放/暂停，图标跟着电脑上真实的播放状态走（在电脑上手动暂停，这里也会变）；它两边是上一曲 / 下一曲，最外侧两个是快退 / 快进 10 秒。标题右边写着这排键当前控制的是哪个播放器 —— 电脑上同时开着好几个时，只有那一个会动。当前播放器做不了的操作会直接把键灰掉、按不动 —— 比如网易云音乐没实现跳转，快退/快进就是灰的；Edge 里放单个视频时无处切歌，上一曲/下一曲就是灰的。</li>
+      <li><b>键盘输入</b>：先在电脑上点一下要输入的位置，再在手机上打字发送；支持中文和 emoji，下面还有回车、退格、空格、方向键等按键。</li>
+      <li><b>音频输出</b>：点设备名即可把系统默认输出切过去，正在播放的声音会立刻改道。</li>
+      <li><b>关闭显示器</b>后电脑仍在运行，随时点「唤醒屏幕」即可；这时媒体键、鼠标、打字都能用。</li>
+      <li><b>锁定</b>之后 Windows 会拦截模拟输入，鼠标/键盘/媒体键将无法使用（系统安全机制，无法绕过）。</li>
+      <li><b>睡眠/休眠</b>后服务随系统一起挂起，需要用开机卡或电源键唤醒，唤醒后网页会自动重连。</li>
+    </ul>
+    <button id="closeHelpBtn" class="btn primary">知道了</button>
+  </div>
+</div>
+
+<script src="/app.js"></script>
+</body>
+</html>
