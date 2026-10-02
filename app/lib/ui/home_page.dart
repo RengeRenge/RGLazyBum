@@ -49,6 +49,8 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     _dragTimer?.cancel();
+    // 列表还没回来就退出页面了，别把回调留在客户端上
+    _client.onWindowList = null;
     _text.dispose();
     _textFocus.dispose();
     super.dispose();
@@ -476,7 +478,37 @@ class _HomePageState extends State<HomePage> {
   Widget _windowCard() {
     return Panel(
       title: '窗口',
-      hint: 'Win+Shift+方向键',
+      // 右边显示电脑当前前台窗口的标题（没窗口在前台时是「桌面」），点一下
+      // 弹出所有可切换窗口的列表。
+      hint: _client.windowTitle.isEmpty ? null : _client.windowTitle,
+      hintOnTap: _pickWindow,
+      // 标题同一行右侧那三个键，照着 Windows 标题栏右边三个键做的，
+      // 作用对象都是电脑上当前前台窗口
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconBox(
+            size: 32,
+            radius: 10,
+            onTap: () => _send('window.minimize'),
+            child: const Icon(Icons.remove),
+          ),
+          const SizedBox(width: 4),
+          IconBox(
+            size: 32,
+            radius: 10,
+            onTap: () => _send('window.maximize'),
+            child: Icon(_client.windowMaximized ? Icons.filter_none : Icons.crop_square),
+          ),
+          const SizedBox(width: 4),
+          IconBox(
+            size: 32,
+            radius: 10,
+            onTap: _closeWindow,
+            child: const Icon(Icons.close, color: kDanger),
+          ),
+        ],
+      ),
       children: [
         Row(
           children: [
@@ -494,6 +526,114 @@ class _HomePageState extends State<HomePage> {
           ],
         ),
       ],
+    );
+  }
+
+  /// 关电脑上那个窗口。跟点标题栏的 ✕ 一样会丢没保存的东西，先问一句；
+  /// 该不该保存还是由那个程序自己弹（电脑端发的是 WM_CLOSE）。
+  Future<void> _closeWindow() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        backgroundColor: kCard,
+        title: const Text('确定关闭电脑上这个窗口吗？'),
+        content: const Text('没保存的内容会按那个程序自己的提示处理。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('取消', style: TextStyle(color: kMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('确定', style: TextStyle(color: kDanger)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) _send('window.close');
+  }
+
+  // ------------------------------------------------------------------ 切窗口
+
+  /// 点「窗口」卡片右上角的标题：向电脑要一份窗口列表。
+  /// 列表是异步推回来的，所以先挂上回调，收到之后再弹面板。
+  void _pickWindow() {
+    if (!_client.send('window.list')) return;
+    _client.onWindowList = _showWindowSheet;
+  }
+
+  void _showWindowSheet(List<WindowInfo> windows) {
+    _client.onWindowList = null;
+    if (!mounted) return;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: kCard,
+      shape: RoundedRectangleBorder(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        side: const BorderSide(color: kLine),
+      ),
+      builder: (sheet) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(18, 16, 18, 10),
+              child: Text(
+                '切换窗口',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: kMuted),
+              ),
+            ),
+            Flexible(
+              child: ListView.builder(
+                shrinkWrap: true,
+                padding: const EdgeInsets.fromLTRB(10, 0, 10, 16),
+                itemCount: windows.length,
+                itemBuilder: (context, i) {
+                  final win = windows[i];
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 6),
+                    child: TapBox(
+                      alignment: Alignment.centerLeft,
+                      onTap: () {
+                        _client.send('window.activate', {'id': win.id});
+                        Navigator.of(sheet).pop();
+                      },
+                      child: Row(
+                        children: [
+                          // 当前前台窗口的圆点用高亮色，一眼看出自己在哪一行
+                          Container(
+                            width: 7,
+                            height: 7,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: win.current ? kAccent : kLine,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: Text(
+                              win.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: win.current ? kAccent : kText,
+                              ),
+                            ),
+                          ),
+                          if (win.current)
+                            const Text('当前', style: TextStyle(fontSize: 11, color: kMuted)),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

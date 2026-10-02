@@ -110,6 +110,41 @@ _user32.SendInput.argtypes = (wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int
 _user32.SendInput.restype = wintypes.UINT
 _user32.GetCursorPos.argtypes = (ctypes.POINTER(wintypes.POINT),)
 _user32.GetCursorPos.restype = wintypes.BOOL
+_user32.GetForegroundWindow.restype = wintypes.HWND
+_user32.GetWindowTextLengthW.argtypes = (wintypes.HWND,)
+_user32.GetWindowTextLengthW.restype = ctypes.c_int
+_user32.GetWindowTextW.argtypes = (wintypes.HWND, wintypes.LPWSTR, ctypes.c_int)
+_user32.GetWindowTextW.restype = ctypes.c_int
+_user32.IsWindow.argtypes = (wintypes.HWND,)
+_user32.IsWindow.restype = wintypes.BOOL
+_user32.IsWindowVisible.argtypes = (wintypes.HWND,)
+_user32.IsWindowVisible.restype = wintypes.BOOL
+_user32.IsIconic.argtypes = (wintypes.HWND,)
+_user32.IsIconic.restype = wintypes.BOOL
+_user32.IsZoomed.argtypes = (wintypes.HWND,)
+_user32.IsZoomed.restype = wintypes.BOOL
+_user32.PostMessageW.argtypes = (wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM)
+_user32.PostMessageW.restype = wintypes.BOOL
+_user32.GetWindow.argtypes = (wintypes.HWND, wintypes.UINT)
+_user32.GetWindow.restype = wintypes.HWND
+_user32.GetWindowLongW.argtypes = (wintypes.HWND, ctypes.c_int)
+_user32.GetWindowLongW.restype = wintypes.LONG
+_user32.ShowWindow.argtypes = (wintypes.HWND, ctypes.c_int)
+_user32.ShowWindow.restype = wintypes.BOOL
+_user32.SetForegroundWindow.argtypes = (wintypes.HWND,)
+_user32.SetForegroundWindow.restype = wintypes.BOOL
+_user32.EnumWindows.argtypes = (ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM), wintypes.LPARAM)
+_user32.EnumWindows.restype = wintypes.BOOL
+
+# 判断 UWP 应用留下的"挂起来"的窗口要用 dwmapi
+_dwmapi = ctypes.WinDLL("dwmapi")
+_dwmapi.DwmGetWindowAttribute.argtypes = (
+    wintypes.HWND,
+    wintypes.DWORD,
+    ctypes.c_void_p,
+    wintypes.DWORD,
+)
+_dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
 
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
@@ -164,6 +199,7 @@ VK_LEFT = 0x25
 VK_UP = 0x26
 VK_RIGHT = 0x27
 VK_DOWN = 0x28
+VK_M = 0x4D
 VK_INSERT = 0x2D
 VK_DELETE = 0x2E
 
@@ -265,6 +301,181 @@ def screen_size() -> tuple[int, int]:
     """整个虚拟桌面（所有显示器拼起来）的尺寸。"""
     _, _, w, h = _virtual_desktop()
     return w, h
+
+
+_MAX_TITLE = 200
+
+# 窗口列表里每条的标题截断长度。列表是给手机屏看的，太长没意义，还费流量。
+_MAX_LISTED_TITLE = 120
+
+
+def _window_title(hwnd: int, limit: int = _MAX_TITLE) -> str:
+    """读一个窗口的标题，读不到就返回空串。"""
+    length = _user32.GetWindowTextLengthW(hwnd)
+    if length <= 0:
+        return ""
+    buffer = ctypes.create_unicode_buffer(length + 1)
+    _user32.GetWindowTextW(hwnd, buffer, length + 1)
+    return buffer.value[:limit]
+
+
+def foreground_title() -> str:
+    """当前前台窗口的标题，读不到就返回空串。
+
+    手机上要靠它知道现在切到了哪个窗口，所以每秒查一次。标题可能很长
+    （浏览器会把整篇文章的标题塞进来），这里先截到 200 个字符，免得每秒
+    往手机上推一大坨。
+    """
+    return _window_title(_user32.GetForegroundWindow())
+
+
+# ---------------------------------------------------------------- 窗口列表
+
+_GWL_EXSTYLE = -20
+_WS_EX_TOOLWINDOW = 0x00000080
+_GW_OWNER = 4
+_SW_RESTORE = 9
+_SW_MINIMIZE = 6
+_SW_MAXIMIZE = 3
+_WM_CLOSE = 0x0010
+_DWMWA_CLOAKED = 14
+
+# EnumWindows 的回调签名，得在外面建好，回调对象被回收的话枚举会直接崩
+_ENUM_PROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+
+def _is_cloaked(hwnd: int) -> bool:
+    """窗口是不是 UWP 那种"挂着但没显示"的壳。
+
+    每个 UWP 应用都会额外留一个 visible、有标题、但实际看不见的顶层窗口，
+    不滤掉的话列表里会凭空多出一堆重复条目。
+    """
+    value = ctypes.c_int(0)
+    result = _dwmapi.DwmGetWindowAttribute(
+        hwnd, _DWMWA_CLOAKED, ctypes.byref(value), ctypes.sizeof(value)
+    )
+    # 老系统上可能查不到这个属性，查不到就当没挂起
+    return result == 0 and value.value != 0
+
+
+def _is_switchable(hwnd: int) -> bool:
+    """这个窗口会不会出现在系统的 Alt+Tab 列表里。判据跟系统大致对齐。"""
+    if not _user32.IsWindowVisible(hwnd):
+        return False
+    # 有 owner 的是对话框 / 浮动面板，Alt+Tab 本来就不列它们
+    if _user32.GetWindow(hwnd, _GW_OWNER):
+        return False
+    if _user32.GetWindowLongW(hwnd, _GWL_EXSTYLE) & _WS_EX_TOOLWINDOW:
+        return False
+    if _is_cloaked(hwnd):
+        return False
+    return _window_title(hwnd) != ""
+
+
+def list_windows() -> list[dict]:
+    """列出所有能切过去的窗口，按 Z 序（最前面的排第一）。
+
+    id 就是 HWND，current 标的是当前前台那个 —— 手机端要拿它给列表里的
+    "自己在哪一行" 加高亮。前端如果拿标题去比是对不上的：标题在这里截到
+    120 字符，而每秒推的 focus 截到 200，长标题两边对不齐。
+    """
+    foreground = _user32.GetForegroundWindow()
+    found: list[dict] = []
+
+    def callback(hwnd, _):
+        if _is_switchable(hwnd):
+            found.append(
+                {
+                    "id": int(hwnd),
+                    "title": _window_title(hwnd, _MAX_LISTED_TITLE),
+                    "current": hwnd == foreground,
+                }
+            )
+        return True
+
+    _user32.EnumWindows(_ENUM_PROC(callback), 0)
+    return found
+
+
+def activate_window(hwnd: int) -> None:
+    """把指定窗口切到前台；最小化的先还原。
+
+    Windows 不允许后台进程随便抢前台焦点，直接调 SetForegroundWindow 会静默
+    失败。标准绕法是先按住 Alt —— 系统会认为这次前台切换是用户敲出来的，
+    于是放行。代价是会短暂按一下 Alt，松手就好。
+    """
+    if not _user32.IsWindow(hwnd):
+        return
+    if _user32.IsIconic(hwnd):
+        _user32.ShowWindow(hwnd, _SW_RESTORE)
+    _send(_key_input(VK_MENU, 0))
+    _user32.SetForegroundWindow(hwnd)
+    _send(_key_input(VK_MENU, KEYEVENTF_KEYUP))
+
+
+def minimize_all_windows() -> None:
+    """Win+M：把所有窗口最小化，露出桌面。
+
+    用 Win+M 而不是 Win+D —— Win+D 是切换式的，已经在桌面时按下去会把窗口
+    全部还原，跟"点击列表里的桌面"这个动作的语义对不上。
+    """
+    hotkey(VK_LWIN, VK_M)
+
+
+# ------------------------------------------------------------ 窗口标题栏按钮
+
+class NoWindowError(RuntimeError):
+    """当前没有可操作的应用窗口（已经在桌面上了）。"""
+
+
+def _focused_window() -> int:
+    """前台窗口句柄，但必须是个真正的应用窗口，否则返回 0。
+
+    回到桌面时前台窗口是 Progman（桌面本身），对它发 WM_CLOSE 会把资源管理器
+    关掉。所以这里跟窗口列表用同一套判据，不是应用窗口就当没有目标，调用方
+    什么也不做。
+    """
+    hwnd = _user32.GetForegroundWindow()
+    if not hwnd or not _is_switchable(hwnd):
+        return 0
+    return int(hwnd)
+
+
+def _require_focused_window() -> int:
+    hwnd = _focused_window()
+    if not hwnd:
+        raise NoWindowError("当前没有窗口在前台（已经在桌面上了）")
+    return hwnd
+
+
+def foreground_maximized() -> bool:
+    """前台窗口是不是最大化状态 —— 手机端拿它决定中间那个键画哪个图标。"""
+    hwnd = _focused_window()
+    return bool(hwnd) and bool(_user32.IsZoomed(hwnd))
+
+
+def minimize_foreground() -> None:
+    """最小化当前前台窗口（标题栏那个「—」）。"""
+    _user32.ShowWindow(_require_focused_window(), _SW_MINIMIZE)
+
+
+def toggle_maximize_foreground() -> None:
+    """最大化 / 还原当前前台窗口。
+
+    一个键两种状态：没最大化就最大化，已经最大化了就还原成窗口大小。这正是
+    Windows 标题栏中间那个键的行为，图标也跟着状态换。
+    """
+    hwnd = _require_focused_window()
+    _user32.ShowWindow(hwnd, _SW_RESTORE if _user32.IsZoomed(hwnd) else _SW_MAXIMIZE)
+
+
+def close_foreground() -> None:
+    """关闭当前前台窗口（标题栏那个「✕」）。
+
+    发的是 WM_CLOSE 而不是强杀进程 —— 跟点标题栏的 ✕ 完全一样，该弹"要不要
+    保存"的照样会弹，不会让人白丢工作。
+    """
+    _user32.PostMessageW(_require_focused_window(), _WM_CLOSE, 0, 0)
 
 
 def move_mouse(dx: int, dy: int) -> None:

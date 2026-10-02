@@ -15,6 +15,11 @@
     textInput: $('#textInput'),
     playBtn: $('#playBtn'),
     mediaHint: $('#mediaHint'),
+    winPick: $('#winPick'),
+    winTitle: $('#winTitle'),
+    winPop: $('#winPop'),
+    winPopList: $('#winPopList'),
+    winMaxBtn: $('#winMaxBtn'),
     prevBtn: $('#prevBtn'),
     nextBtn: $('#nextBtn'),
     seekBackBtn: $('#seekBackBtn'),
@@ -102,6 +107,18 @@
       els.seekBackBtn.disabled = !can('canSeek');
       els.seekFwdBtn.disabled = !can('canSeek');
     }
+    if (typeof d.focus === 'string') {
+      // 当前前台窗口的标题，完整内容挂在 title 上，鼠标悬停能看全
+      els.winTitle.textContent = d.focus;
+      els.winTitle.title = d.focus;
+    }
+    // 前台窗口最大化了就换成「还原」那个图标，跟 Windows 标题栏一致
+    if (typeof d.maximized === 'boolean') {
+      els.winMaxBtn.classList.toggle('maximized', d.maximized);
+      els.winMaxBtn.setAttribute('aria-label', d.maximized ? '还原' : '最大化');
+    }
+    // window.list 的答复。列表只在用户点了标题之后才要，所以收到就弹。
+    if (Array.isArray(d.windows)) openWindowPop(d.windows);
     if (typeof d.volume === 'number' && !volumeDragging) {
       els.volSlider.value = Math.round(d.volume * 100);
     }
@@ -204,6 +221,71 @@
   $$('[data-window]').forEach((btn) => {
     btn.addEventListener('click', () => send('window.move', { direction: btn.dataset.window }));
   });
+
+  // 中间三个键对应标题栏的「—／最大化还原／✕」，动作对象是电脑上当前前台窗口
+  $$('[data-win-ctl]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const action = btn.dataset.winCtl;
+      // 关窗口跟点标题栏的 ✕ 一样会丢未保存的东西，先问一句。
+      // 保存提示还是由那个程序自己弹，这里只是拦一道手滑。
+      if (action === 'close' && !confirm('确定关闭电脑上这个窗口吗？\n没保存的内容会按那个程序自己的提示处理。')) {
+        return;
+      }
+      send('window.' + action);
+    });
+  });
+
+  function closeWindowPop() {
+    els.winPop.classList.add('hidden');
+    els.winPick.setAttribute('aria-expanded', 'false');
+  }
+
+  function openWindowPop(windows) {
+    els.winPopList.textContent = '';
+    windows.forEach((win) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'win-item' + (win.current ? ' current' : '');
+      item.setAttribute('role', 'option');
+
+      const dot = document.createElement('i');
+      dot.className = 'dot';
+      const name = document.createElement('span');
+      name.className = 'name';
+      name.textContent = win.title;
+      item.append(dot, name);
+
+      item.addEventListener('click', () => {
+        send('window.activate', { id: win.id });
+        closeWindowPop();
+      });
+      els.winPopList.appendChild(item);
+    });
+
+    els.winPop.classList.remove('hidden');
+    els.winPick.setAttribute('aria-expanded', 'true');
+    // 贴着标题右下角展开，放不下就翻到上面，左右再夹紧进屏幕
+    const anchor = els.winPick.getBoundingClientRect();
+    const box = els.winPop.getBoundingClientRect();
+    let left = anchor.right - box.width;
+    let top = anchor.bottom + 6;
+    if (top + box.height > window.innerHeight - 8) top = Math.max(8, anchor.top - box.height - 6);
+    left = Math.min(Math.max(8, left), window.innerWidth - box.width - 8);
+    els.winPop.style.left = left + 'px';
+    els.winPop.style.top = top + 'px';
+  }
+
+  els.winPick.addEventListener('click', (ev) => {
+    ev.stopPropagation();
+    if (els.winPop.classList.contains('hidden')) send('window.list');
+    else closeWindowPop();
+  });
+  els.winPop.addEventListener('click', (ev) => ev.stopPropagation());
+  document.addEventListener('click', closeWindowPop);
+  window.addEventListener('resize', closeWindowPop);
+  document.addEventListener('scroll', (ev) => {
+    if (!els.winPop.contains(ev.target)) closeWindowPop();
+  }, true);
 
   $$('[data-power]').forEach((btn) => {
     const action = btn.dataset.power;

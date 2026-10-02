@@ -24,6 +24,19 @@ class AudioDevice {
   final String name;
 }
 
+/// 电脑上一个能切过去的窗口。[id] 是电脑那边的窗口句柄，
+/// 0 是特例——代表桌面（点它把所有窗口最小化）。
+class WindowInfo {
+  const WindowInfo({required this.id, required this.title, required this.current});
+
+  final int id;
+  final String title;
+
+  /// 是不是电脑当前的前台窗口。服务端下发，不要拿标题去比：
+  /// 列表里的标题截到 120 字符，而每秒推的 focus 截到 200，长标题对不上。
+  final bool current;
+}
+
 class RemoteClient extends ChangeNotifier {
   RemoteClient._();
 
@@ -51,6 +64,13 @@ class RemoteClient extends ChangeNotifier {
   /// 没有媒体会话时是空串。
   String mediaApp = '';
 
+  /// 电脑上当前前台窗口的标题，显示在「窗口」卡片右上角。读不到时是空串。
+  String windowTitle = '';
+
+  /// 前台窗口是不是最大化状态 —— 标题栏中间那个键要在「最大化」和「还原」
+  /// 两个图标之间切，靠它决定画哪个。
+  bool windowMaximized = false;
+
   /// 当前这条媒体会话支不支持快进/快退。网易云音乐这类只做了播放/暂停/切歌的
   /// 播放器会报 false，界面就把那两个键灰掉——位置请求它们收下却不动，
   /// 光看返回值分辨不出来。
@@ -63,6 +83,10 @@ class RemoteClient extends ChangeNotifier {
 
   /// 由界面注入：把服务端发来的错误 / 提示显示成浮层。
   void Function(String message, {bool error})? onToast;
+
+  /// 由界面注入：点了「窗口」卡片右上角的标题之后，服务端会把窗口列表推回来，
+  /// 界面拿它弹选择面板。列表是异步回来的，所以走回调而不是返回值。
+  void Function(List<WindowInfo> windows)? onWindowList;
 
   Endpoint? get endpoint => _endpoint;
   LinkState get state => _state;
@@ -249,6 +273,26 @@ class RemoteClient extends ChangeNotifier {
 
     final deviceId = data['deviceId'];
     if (deviceId != null) this.deviceId = '$deviceId';
+
+    final focus = data['focus'];
+    if (focus != null) windowTitle = '$focus';
+
+    final maximized = data['maximized'];
+    if (maximized is bool) windowMaximized = maximized;
+
+    // window.list 的答复，只有点了标题才会来
+    final windows = data['windows'];
+    if (windows is List) {
+      onWindowList?.call([
+        for (final item in windows)
+          if (item is Map)
+            WindowInfo(
+              id: item['id'] is num ? (item['id'] as num).toInt() : 0,
+              title: '${item['title'] ?? ''}',
+              current: item['current'] == true,
+            ),
+      ]);
+    }
 
     // media 为 null 表示电脑上没有媒体会话
     if (data.containsKey('media')) {

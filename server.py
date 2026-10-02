@@ -189,12 +189,18 @@ async def blocking(func, *args, **kwargs):
 
 
 async def _state_snapshot() -> dict:
-    """手机端要的全部实时状态：音频（音量/静音/设备）+ 媒体播放状态。
+    """手机端要的全部实时状态：音频（音量/静音/设备）+ 媒体播放状态 + 当前窗口标题。
 
     音频那部分是要跑在单线程执行器里的 COM 调用；媒体会话是 WinRT 的异步接口，
-    直接在事件循环里 await 就行。
+    直接在事件循环里 await 就行；前台窗口标题是普通 user32 调用，但也一起丢给
+    执行器，免得阻塞事件循环（窗口标题长的时候 GetWindowTextW 会跨进程取数据）。
     """
     state = await blocking(audiocontrol.snapshot)
+    # 回到桌面时前台窗口是 Progman，标题是空的。手机上显示「桌面」比显示空白
+    # 有用得多 —— 至少知道现在没窗口在前台。
+    state["focus"] = await blocking(wininput.foreground_title) or "桌面"
+    # 标题栏中间那个键要在「最大化」和「还原」两个图标之间切，得知道当前状态
+    state["maximized"] = await blocking(wininput.foreground_maximized)
     state["media"] = await mediacontrol.snapshot()
     return state
 
@@ -251,6 +257,23 @@ async def dispatch(action: str, params: dict):
         await blocking(
             wininput.move_window_to_other_monitor, str(params.get("direction", "right"))
         )
+    elif action == "window.list":
+        # id 0 固定代表桌面，放在最前面。列表里永远有它，即使当前没有窗口在
+        # 前台（比如已经回到桌面了），用户也能靠它把窗口全部收起来。
+        return {"windows": [{"id": 0, "title": "桌面"}] + await blocking(wininput.list_windows)}
+    elif action == "window.activate":
+        hwnd = int(params.get("id") or 0)
+        if hwnd == 0:
+            await blocking(wininput.minimize_all_windows)
+        else:
+            await blocking(wininput.activate_window, hwnd)
+    # 下面三条对应窗口标题栏右边那三个键，作用对象都是当前前台窗口
+    elif action == "window.minimize":
+        await blocking(wininput.minimize_foreground)
+    elif action == "window.maximize":
+        await blocking(wininput.toggle_maximize_foreground)
+    elif action == "window.close":
+        await blocking(wininput.close_foreground)
     elif action == "text.send":
         text = str(params.get("text") or "")
         if text:
@@ -280,6 +303,7 @@ def _describe(exc: BaseException) -> str:
         exc,
         (
             wininput.InputError,
+            wininput.NoWindowError,
             power.PowerError,
             audiocontrol.AudioError,
             mediacontrol.MediaError,

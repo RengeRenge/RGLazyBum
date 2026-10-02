@@ -42,7 +42,7 @@
 
 **屏幕** — 一块显示器一个模块，点「刷新」重新抓图，也可以开自动刷新（外网慎用，费流量）。
 
-**窗口** — 把当前活动窗口移到左屏 / 右屏。
+**窗口** — 把当前活动窗口移到左屏 / 右屏。卡片标题栏显示电脑当前前台窗口的标题，点它弹出气泡，里面是按前后顺序排好的所有窗口，点谁就切到谁；列表第一行固定是「桌面」，点它把所有窗口最小化。标题右边三个小键照着 Windows 标题栏做的 —— 最小化、最大化／还原、关闭（关闭会先问一句，免得手滑），作用对象都是电脑上当前那个前台窗口。
 
 **电源** — 关闭显示器、唤醒屏幕、锁定、睡眠、休眠。关屏后电脑照常运行，媒体键、鼠标、打字都还能用。
 
@@ -58,9 +58,13 @@
 | --- | --- |
 | ![二维码窗口](docs/screenshots/pc-qr-window.png) | ![连接页](docs/screenshots/android-connect.png) |
 
-| 安卓 · 触摸板 | 安卓 · 音频输出 / 窗口 / 电源 |
+| 安卓 · 音频输出 / 窗口 / 电源 |  安卓 · 切换窗口 |
 | --- | --- |
-| ![触摸板](docs/screenshots/android-pad.png) | ![更多设置](docs/screenshots/android-more.png) |
+| ![更多设置](docs/screenshots/android-more.jpg) | ![切换窗口](docs/screenshots/android-window-list.png) |
+
+| 安卓 · 屏幕 | 安卓 · 触摸板 |
+| --- | --- |
+| ![屏幕](docs/screenshots/android-screen.jpg) | ![触摸板](docs/screenshots/android-pad.png) |
 
 ---
 
@@ -70,8 +74,8 @@
 
 | 你的设备 | 下载哪个 | 怎么用 |
 | --- | --- | --- |
-| Windows 10/11 电脑 | `RGLazyBum-v1.0.0-win-x64.zip` | 解压到任意目录，双击里面的 `RGLazyBum.exe` |
-| 安卓手机 | `RGLazyBum-v1.0.0-android.apk` | 传到手机装上；第一次扫码会要相机权限 |
+| Windows 10/11 电脑 | `RGLazyBum-v1.1.0-win-x64.zip` | 解压到任意目录，双击里面的 `RGLazyBum.exe` |
+| 安卓手机 | `RGLazyBum-v1.1.0-android.apk` | 传到手机装上；第一次扫码会要相机权限 |
 | iPhone | 没有现成的 | 需要在 Mac 上用 Xcode 自己构建，见 [从源码构建 → iOS App](#ios-app) |
 | 任意手机（不想装 App） | 什么都不用下 | 手机浏览器打开 `http://<电脑局域网IP>:<端口>` 就是完整界面 |
 

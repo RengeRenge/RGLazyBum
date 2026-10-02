@@ -99,8 +99,111 @@ button, input, textarea { font-family: inherit; color: inherit; }
   gap: 8px;
   margin-bottom: 12px;
 }
-.card-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); }
+.card-head h2 { margin: 0; font-size: 14px; font-weight: 600; color: var(--muted); flex: none; }
 .hint { font-size: 11px; color: var(--muted); }
+
+/* 「窗口」卡片的表头：[窗口] …… [当前窗口标题 ▼] [─ □ ✕]
+   标题点一下弹出窗口列表气泡，它能很长（浏览器会把整篇文章的标题塞进来），
+   所以让它自己吃掉中间剩下的空间、超出省略。这样两头都不动：
+   「窗口」两个字永远占住自己的位置，右边那三个键也永远贴着右边。 */
+.win-card .card-head { gap: 14px; }
+.win-pick {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+.win-pick:active { background: var(--card-2); }
+.win-title {
+  flex: 1;
+  min-width: 0;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.caret {
+  flex: none;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid var(--muted);
+}
+
+/* 标题右边那三个键，照着 Windows 标题栏右边三个键做的，作用对象是当前前台窗口 */
+.win-ctls { flex: none; display: flex; align-items: center; gap: 4px; }
+.win-ctl {
+  flex: none;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text);
+}
+.win-ctl svg {
+  width: 15px; height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+}
+.win-ctl.danger { color: var(--danger); border-color: #4a2b2b; }
+/* 最大化 / 还原两个图标都在按钮里，靠 maximized 类切换，跟标题栏一样 */
+.win-ctl .ic-restore { display: none; }
+.win-ctl.maximized .ic-max { display: none; }
+.win-ctl.maximized .ic-restore { display: block; }
+
+/* 窗口列表气泡 */
+.win-pop {
+  position: fixed;
+  z-index: 55;
+  min-width: 190px;
+  max-width: min(330px, 88vw);
+  padding: 6px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card-2);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, .6);
+}
+.win-pop.hidden { display: none; }
+.win-pop-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.win-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.win-item:active { background: var(--card); }
+.win-item .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 当前前台窗口，给个高亮，免得不知道自己在哪 */
+.win-item.current { color: var(--accent); }
+.win-item.current .name::after { content: '· 当前'; color: var(--muted); font-size: 11px; margin-left: 6px; }
+.win-item .dot { flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.win-item.current .dot { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
 
 /* ------------------------------------------------------------------ 按钮 */
 .icon-btn, .pill, .btn {

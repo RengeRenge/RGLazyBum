@@ -36,35 +36,91 @@ class Panel extends StatelessWidget {
     this.title,
     this.hint,
     this.trailing,
+    this.hintOnTap,
     required this.children,
   });
 
   final String? title;
   final String? hint;
   final Widget? trailing;
+
+  /// 说明文字可点（点「窗口」卡片右上角的标题弹出窗口列表）。给了它就在文字
+  /// 右边补一个小三角，提示这里点得动。
+  final VoidCallback? hintOnTap;
+
   final List<Widget> children;
+
+  /// 表头里「标题」和「说明」之间最窄留多少。说明是右对齐的，平时它俩离得
+  /// 比这远；只有标题长到占满时才会压到这个宽度，这就是那段"留白"的下限。
+  static const double _titleGap = 14;
+
+  /// 说明和右边那组按钮之间留多少（「窗口」卡片那三个标题栏键就挂在 trailing）。
+  static const double _trailingGap = 10;
+
+  /// 表头：[标题] …… [说明] [右边那组按钮]。
+  ///
+  /// 标题按自己的宽度占位、说明吃掉剩下的空间，反过来不行 —— 说明一长就会把
+  /// 标题（比如「窗口」两个字）挤没。说明本身是右对齐 + 省略号的，所以标题短
+  /// 的时候，那段空白自然就落在中间。
+  List<Widget> _header() {
+    final onTap = hintOnTap;
+    Widget? hintBox;
+    if (hint != null) {
+      final text = Text(
+        hint!,
+        maxLines: 1,
+        textAlign: TextAlign.right,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontSize: 11, color: kMuted),
+      );
+      hintBox = onTap == null
+          ? text
+          : GestureDetector(
+              onTap: onTap,
+              behavior: HitTestBehavior.opaque,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  Flexible(child: text),
+                  const SizedBox(width: 4),
+                  // 向下的小三角，和网页上那个 caret 一个意思
+                  const Icon(Icons.arrow_drop_down, size: 14, color: kMuted),
+                ],
+              ),
+            );
+    }
+
+    return <Widget>[
+      if (title != null) ...[
+        Text(
+          title!,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: kMuted,
+          ),
+        ),
+        if (hintBox != null || trailing != null) const SizedBox(width: _titleGap),
+      ],
+      // 说明吃掉中间的空间，右边那组按钮才贴得住右边。没有说明时（音量卡片就
+      // 是「音量」+「静音」，没有说明）用 Spacer 顶开，效果和网页上
+      // .card-head 的 space-between 一致。
+      if (hintBox != null)
+        Expanded(child: hintBox)
+      else if (trailing != null)
+        const Spacer(),
+      if (trailing != null) ...[
+        if (hintBox != null) const SizedBox(width: _trailingGap),
+        trailing!,
+      ],
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
-    final header = <Widget>[
-      if (title != null) ...[
-        Expanded(
-          child: Text(
-            title!,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: kMuted,
-            ),
-          ),
-        ),
-        if (hint != null || trailing != null) const SizedBox(width: 8),
-      ],
-      if (hint != null)
-        Text(hint!, style: const TextStyle(fontSize: 11, color: kMuted)),
-      ?trailing,
-    ];
+    final hasHeader = title != null || hint != null || trailing != null;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -77,8 +133,8 @@ class Panel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (header.isNotEmpty) ...[
-            Row(children: header),
+          if (hasHeader) ...[
+            Row(children: _header()),
             const SizedBox(height: 12),
           ],
           ...children,

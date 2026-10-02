@@ -95,8 +95,27 @@
     <div id="devices" class="devices"><div class="empty">加载中…</div></div>
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>窗口</h2><span class="hint">Win+Shift+方向键</span></div>
+  <section class="card win-card">
+    <div class="card-head">
+      <h2>窗口</h2>
+      <button class="win-pick" id="winPick" type="button" aria-haspopup="listbox" aria-expanded="false">
+        <span class="hint win-title" id="winTitle"></span>
+        <i class="caret" aria-hidden="true"></i>
+      </button>
+      <!-- 当前窗口标题同一行右侧那三个键，照着 Windows 标题栏做的，作用对象是当前前台窗口 -->
+      <div class="win-ctls">
+        <button class="icon-btn win-ctl" data-win-ctl="minimize" aria-label="最小化" title="最小化窗口">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+        </button>
+        <button class="icon-btn win-ctl" id="winMaxBtn" data-win-ctl="maximize" aria-label="最大化" title="最大化 / 还原">
+          <svg class="ic-max" viewBox="0 0 24 24" aria-hidden="true"><rect x="5.5" y="5.5" width="13" height="13"/></svg>
+          <svg class="ic-restore" viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="7.5" width="11" height="11"/><path d="M8.5 7.5V5.5h11v11h-2"/></svg>
+        </button>
+        <button class="icon-btn win-ctl danger" data-win-ctl="close" aria-label="关闭" title="关闭窗口">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+    </div>
     <div class="btn-row">
       <button class="btn" data-window="left">← 移到左屏</button>
       <button class="btn" data-window="right">移到右屏 →</button>
@@ -119,6 +138,11 @@
 </main>
 
 <div id="toast" class="toast"></div>
+
+<!-- 点「窗口」卡片右上角的标题弹出的气泡：列出所有能切过去的窗口 -->
+<div id="winPop" class="win-pop hidden">
+  <div id="winPopList" class="win-pop-list" role="listbox"></div>
+</div>
 
 <div id="menuOverlay" class="sheet hidden">
   <div class="sheet-inner">
