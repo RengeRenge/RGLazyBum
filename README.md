@@ -75,7 +75,7 @@
 | 你的设备 | 下载哪个 | 怎么用 |
 | --- | --- | --- |
 | Windows 10/11 电脑 | `RGLazyBum-v1.1.1-win-x64.zip` | 解压到任意目录，双击里面的 `RGLazyBum.exe` |
-| 安卓手机 | `RGLazyBum-v1.1.0-android.apk` | 传到手机装上；第一次扫码会要相机权限（安卓端本版无改动，沿用 v1.1.0） |
+| 安卓手机 | `RGLazyBum-v1.1.1-android.apk` | 传到手机装上；第一次扫码会要相机权限 |
 | iPhone | 没有现成的 | 需要在 Mac 上用 Xcode 自己构建，见 [从源码构建 → iOS App](#ios-app) |
 | 任意手机（不想装 App） | 什么都不用下 | 手机浏览器打开 `http://<电脑局域网IP>:<端口>` 就是完整界面 |
 
