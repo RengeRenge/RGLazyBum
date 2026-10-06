@@ -39,7 +39,16 @@ _MUTEX_HANDLE: int | None = None
 # 图标状态色：一眼看出是不是出问题了
 _COLOR_OK = "#1f7ae0"        # 服务在跑，防火墙已放行
 _COLOR_BLOCKED = "#e08a20"   # 服务在跑，但手机连不上（防火墙未放行）
+_COLOR_STARTING = "#8a94a6"  # 正在启动，端口还没定下来
 _COLOR_STOPPED = "#c0392b"   # 服务没起来
+
+# 日志里给颜色配一句人话，省得每次改状态都得同步两处判断。
+_STATE_LABELS = {
+    _COLOR_OK: "防火墙已放行",
+    _COLOR_BLOCKED: "防火墙未放行",
+    _COLOR_STARTING: "正在启动",
+    _COLOR_STOPPED: "服务未运行",
+}
 
 # 防火墙检测的重试次数与间隔。程序挂在开机自启里，启动时常常赶在 Windows
 # 防火墙服务（mpssvc/BFE）就绪之前，netsh 会瞬时失败；一次失败就判定"未放行"
@@ -83,8 +92,8 @@ def acquire_single_instance() -> bool:
 def make_icon_image(color: str = "#1f7ae0", size: int = 64, rounded: bool = True) -> Image.Image:
     """画一个简单的图标：方块 + 一条白色咸鱼。
 
-    底色还是那三种状态色（见 _COLOR_*），蓝=正常、黄=防火墙未放行、
-    红=服务停止，换成咸鱼之后状态一眼照样分得出来。
+    底色还是那几种状态色（见 _COLOR_*），蓝=正常、黄=防火墙未放行、
+    灰=正在启动、红=服务停止，换成咸鱼之后状态一眼照样分得出来。
 
     rounded=False 画成满幅方块、不留透明角 —— iOS 的应用图标不接受透明，
     圆角由系统自己裁，所以那边得用这一版。
@@ -468,6 +477,9 @@ class TrayApp:
         thread = self._thread
         if thread is None or not thread.is_alive():
             return _COLOR_STOPPED
+        if self.port is None:
+            # 线程活着但端口还没定：服务在起，别画成红的（红只留给"没起来"）
+            return _COLOR_STARTING
         if not self._firewall_ok:
             return _COLOR_BLOCKED
         return _COLOR_OK
@@ -482,11 +494,7 @@ class TrayApp:
         except Exception:
             logger.debug("更新托盘图标颜色失败", exc_info=True)
             return
-        logger.info(
-            "托盘图标颜色 → %s（防火墙%s）",
-            color,
-            "已放行" if self._firewall_ok else "未放行",
-        )
+        logger.info("托盘图标颜色 → %s（%s）", color, _STATE_LABELS.get(color, ""))
 
     def _on_icon_ready(self, icon: pystray.Icon) -> None:
         """图标就绪回调，由 pystray 在消息循环起来之后调用。
@@ -496,6 +504,9 @@ class TrayApp:
         否则图标永远不会出现在通知区域（现象：服务一切正常但看不到图标）。
         """
         icon.visible = True
+        # 图标显示用的是建图标那一刻画好的图；这里按当前状态重刷一次，
+        # 免得端口/防火墙已经就绪了，通知区域却还挂着启动瞬间的那一帧旧颜色。
+        self._update_icon_state()
         logger.info("托盘图标已就绪（visible=%s）", icon.visible)
         if self._welcome_shown:
             return
@@ -588,8 +599,10 @@ class TrayApp:
         return f"懒狗 :{self.port}" if self.port else "懒狗"
 
     def run(self) -> int:
-        icon = self.build_icon()
+        # 先起服务线程、再建图标：反过来建图标那一刻线程还是 None，会先画一帧红色的
+        # "服务没起来"，开机自启时这一帧可能真被用户看到（服务明明是正常的）。
         self.start_service()
+        icon = self.build_icon()
         logger.info("托盘已启动，端口会从 %s 里按顺序挑", settings.CANDIDATE_PORTS)
 
         try:
