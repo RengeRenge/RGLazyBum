@@ -201,6 +201,9 @@ async def _state_snapshot() -> dict:
     state["focus"] = await blocking(wininput.foreground_title) or "桌面"
     # 标题栏中间那个键要在「最大化」和「还原」两个图标之间切，得知道当前状态
     state["maximized"] = await blocking(wininput.foreground_maximized)
+    # 前台窗口要是管理员进程（游戏多半是），我们注进去的鼠标键盘会被系统静默
+    # 丢掉。这个标志让手机端能给出提示，而不是让人以为"程序坏了"。
+    state["blocked"] = await blocking(wininput.foreground_blocks_input)
     state["media"] = await mediacontrol.snapshot()
     return state
 
@@ -239,11 +242,14 @@ async def dispatch(action: str, params: dict):
         await blocking(audiocontrol.set_default_device, device_id)
 
     elif action == "mouse.move":
-        await blocking(
-            wininput.move_mouse,
-            int(params.get("dx", 0)),
-            int(params.get("dy", 0)),
-        )
+        dx = int(params.get("dx", 0))
+        dy = int(params.get("dy", 0))
+        # rel 是触摸板的"游戏模式"：不发绝对定位，只发相对位移。游戏把光标锁在
+        # 窗口中间时只有这种发法才起作用，详见 wininput.move_mouse_relative。
+        if params.get("rel"):
+            await blocking(wininput.move_mouse_relative, dx, dy)
+        else:
+            await blocking(wininput.move_mouse, dx, dy)
     elif action == "mouse.button":
         await blocking(
             wininput.mouse_button,
@@ -280,6 +286,14 @@ async def dispatch(action: str, params: dict):
             await blocking(wininput.type_text, text)
     elif action == "key.press":
         await blocking(wininput.press_named_key, str(params.get("key") or ""))
+    # 虚拟键盘用：手指按住一个键发 down，松开手指发 up，这样游戏里能按住
+    # W 持续走。修饰键是"点一下锁定/解锁"，走的也是这一对指令。
+    elif action == "key.down":
+        await blocking(wininput.key_down, str(params.get("key") or ""))
+    elif action == "key.up":
+        await blocking(wininput.key_up, str(params.get("key") or ""))
+    elif action == "key.release_all":
+        await blocking(wininput.release_all_keys)
 
     elif action == "power.monitor_off":
         await blocking(power.monitor_off)
@@ -528,6 +542,12 @@ async def control_channel(websocket: WebSocket) -> None:
         logger.exception("控制通道异常")
     finally:
         _clients.discard(websocket)
+        # 手机断线时把还按着的键补一次松开。用户很可能正按住 Ctrl / W 就直接
+        # 把手机锁屏了，不补的话这些键会一直卡在电脑上（卡住的 Win 键尤其难受）。
+        try:
+            await blocking(wininput.release_all_keys)
+        except Exception:
+            logger.warning("断开时释放按键失败", exc_info=True)
         logger.info("手机已断开：%s", websocket.client)
 
 

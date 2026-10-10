@@ -151,6 +151,10 @@
       <span class="menu-title">触摸板</span>
       <span class="menu-desc">移动光标 · 左中右键 · 调灵敏度</span>
     </button>
+    <button class="menu-item" type="button" data-page="keyboard">
+      <span class="menu-title">键盘</span>
+      <span class="menu-desc">完整虚拟键盘 · 可以按住不放 · 修饰键锁定</span>
+    </button>
     <button class="menu-item" type="button" data-page="screen">
       <span class="menu-title">屏幕</span>
       <span class="menu-desc">看电脑画面 · 多显示器分块</span>
@@ -168,6 +172,8 @@
     <span class="page-title">触摸板</span>
     <button id="closePadBtn" class="pill" type="button">关闭</button>
   </div>
+  <!-- 前台是管理员进程时（游戏基本都是），注入会被 Windows 静默丢掉，这里说清楚 -->
+  <div class="page-warn hidden" data-blocked-warn></div>
   <div id="padBig" class="pad big"></div>
   <div class="pad-tip">单指滑动移动光标 · 轻点＝左键 · 双指轻点＝右键 · 双指上下滑动＝滚轮</div>
   <div class="btn-row">
@@ -179,6 +185,16 @@
     <span>灵敏度</span>
     <input id="sens" type="range" min="0.5" max="5" step="0.1" value="2">
     <output id="sensValue">2.0×</output>
+  </label>
+  <!-- 游戏会把光标 ClipCursor 锁在窗口中间，那时"读坐标+绝对定位"的常规发法
+       位移会被吃掉，必须换成纯相对位移。这个开关就是切发法。 -->
+  <label class="toggle">
+    <input id="padGame" type="checkbox">
+    <span class="toggle-box" aria-hidden="true"></span>
+    <span class="toggle-text">
+      游戏模式
+      <i>用相对位移，光标被游戏锁住时也能转视角</i>
+    </span>
   </label>
 </div>
 
@@ -194,6 +210,35 @@
   <div id="shots" class="shots"><div class="empty">加载中…</div></div>
 </div>
 
+<div id="keyboardPage" class="page hidden">
+  <div class="page-head">
+    <span class="page-title">键盘</span>
+    <div class="head-actions">
+      <!-- 触摸板开关放这儿：搁在页面底下会白白占掉一整行按键的高度 -->
+      <button id="kbdPadBtn" class="pill" type="button">触摸板</button>
+      <button id="kbdReleaseBtn" class="pill" type="button">松开所有按键</button>
+      <button id="closeKeyboardBtn" class="pill" type="button">关闭</button>
+    </div>
+  </div>
+  <!-- 前台是管理员进程时（游戏基本都是），注入会被 Windows 静默丢掉，这里说清楚 -->
+  <div class="page-warn hidden" data-blocked-warn></div>
+  <div class="kbd-tabs" id="kbdTabs">
+    <button class="kbd-tab active" type="button" data-kbd-tab="main">主键区</button>
+    <button class="kbd-tab" type="button" data-kbd-tab="func">功能键</button>
+    <button class="kbd-tab" type="button" data-kbd-tab="numpad">小键盘</button>
+  </div>
+  <!-- 键是照着布局表用 JS 生成的，不在这份 HTML 里手写。
+       叫出触摸板之后，这两块和中间那根横杆的先后顺序由 JS 加类决定 -->
+  <div class="kbd-split" id="kbdSplit">
+    <div class="kbd-area" id="kbdArea"></div>
+    <div class="kbd-handle hidden" id="kbdHandle" title="点击换到对面，按住拖动调整触摸板大小"><i></i></div>
+    <div class="pad kbd-pad hidden" id="kbdPad"></div>
+  </div>
+  <div class="kbd-tip" id="kbdTip">
+    按住＝按下不放（按住 W 就能一直往前走）· Ctrl / Shift / Alt / Win 点一下锁定，再点一下解锁
+  </div>
+</div>
+
 <div id="helpOverlay" class="sheet hidden">
   <div class="sheet-inner">
     <h2>使用说明</h2>
@@ -201,8 +246,9 @@
       <li>手机和电脑连同一个局域网即可（同一路由器 / 同一 Wi-Fi）。</li>
       <li>页面由电脑上的后台程序提供（任务栏小图标），退出那个程序网页就会失效；换过端口后要重新扫码。</li>
       <li>想从外网控制，先在托盘菜单打开 <b>IPv6 外网访问</b>，然后扫<b>含 token 的外网二维码</b>；token 只出现在链接里一次，之后浏览器自己记住。局域网访问不需要 token。</li>
-      <li>点左上角<b>标题</b>叫出菜单：触摸板、屏幕、使用说明都在里面。</li>
-      <li><b>触摸板</b>：单指滑动移动光标，轻点＝左键，双指轻点＝右键，双指上下滑动＝滚轮；灵敏度可调。</li>
+      <li>点左上角<b>标题</b>叫出菜单：触摸板、键盘、屏幕、使用说明都在里面。</li>
+      <li><b>触摸板</b>：单指滑动移动光标，轻点＝左键，双指轻点＝右键，双指上下滑动＝滚轮；灵敏度可调。打开<b>游戏模式</b>后改成发相对位移，光标被游戏锁在窗口中间时也能转视角。</li>
+      <li><b>键盘</b>：菜单里的「键盘」是一整块虚拟键盘，分主键区 / 功能键 / 小键盘三个标签。普通键<b>按住不放</b>（游戏里按住 W 就能一直往前走），Ctrl / Shift / Alt / Win <b>点一下锁定</b>、再点一下解锁；Shift 锁定时键帽会变成上档符号。标题栏「触摸板」按钮能在键盘旁边叫出一块触摸板：竖着放得下就上下排、放不下就左右排；中间那根小横杆<b>点一下</b>把触摸板换到对面，<b>按住拖</b>是改它的大小（上下排改高度、左右排改宽度）。退出这一页会自动把按着的键全部松开。</li>
       <li><b>屏幕</b>：一块显示器一个模块，点「刷新」重新抓图，点「自动」每 2 秒自动更新（费流量，外网慎用）。</li>
       <li><b>媒体</b>：中间那个大按钮是播放/暂停，图标跟着电脑上真实的播放状态走（在电脑上手动暂停，这里也会变）；它两边是上一曲 / 下一曲，最外侧两个是快退 / 快进 10 秒。标题右边写着这排键当前控制的是哪个播放器 —— 电脑上同时开着好几个时，只有那一个会动。当前播放器做不了的操作会直接把键灰掉、按不动 —— 比如网易云音乐没实现跳转，快退/快进就是灰的；Edge 里放单个视频时无处切歌，上一曲/下一曲就是灰的。</li>
       <li><b>键盘输入</b>：先在电脑上点一下要输入的位置，再在手机上打字发送；支持中文和 emoji，下面还有回车、退格、空格、方向键等按键。</li>

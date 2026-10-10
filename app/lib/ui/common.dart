@@ -29,6 +29,40 @@ void showToast(String message, {bool error = false}) {
   );
 }
 
+/// 前台窗口是管理员进程时的说明。
+///
+/// Windows 的 UIPI 规定低权限进程不能往高权限窗口注入输入，而且 SendInput 是
+/// "静默失败"（返回成功、实际没生效），所以手机端一条报错都收不到 —— 只能主动
+/// 把情况说清楚，并给出解法。
+const String kBlockedHint =
+    '电脑上当前窗口是「以管理员身份」运行的（游戏基本都是），'
+    'Windows 会直接丢掉我们发过去的鼠标和键盘：滑了、按了都不会有反应。'
+    '在电脑托盘的右键菜单里点一下「以管理员身份重启」就好（会弹一次 UAC 确认）。';
+
+/// 红框提示条：说清楚"为什么按了没反应"这种需要用户动手的事。
+class WarningNote extends StatelessWidget {
+  const WarningNote(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: kDanger.withValues(alpha: .1),
+        border: Border.all(color: const Color(0xFF4A2B2B)),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(
+        text,
+        style: const TextStyle(fontSize: 11, height: 1.5, color: kDanger),
+      ),
+    );
+  }
+}
+
 /// 卡片。title / hint / trailing 都给了就按"标题在左、说明和按钮在右"排。
 class Panel extends StatelessWidget {
   const Panel({

@@ -87,6 +87,14 @@
 
   /* ---------------------------------------------------------------- 状态 */
 
+  // 前台窗口是"以管理员身份运行"的进程（游戏基本都是）时，Windows 的 UIPI 会
+  // 把我们发过去的鼠标键盘静默丢掉 —— SendInput 返回成功但什么也没发生，
+  // 前端一条报错都收不到。所以只能主动解释，并给出解法。
+  const BLOCKED_HINT =
+    '电脑上当前窗口是「以管理员身份」运行的（游戏基本都是），' +
+    'Windows 会直接丢掉我们发过去的鼠标和键盘：滑了、按了都不会有反应。' +
+    '在电脑托盘的右键菜单里点一下「以管理员身份重启」就好（会弹一次 UAC 确认）。';
+
   let volumeDragging = false;
   let volumeDragTimer = 0;
   let devicesSignature = null;
@@ -119,6 +127,13 @@
     }
     // window.list 的答复。列表只在用户点了标题之后才要，所以收到就弹。
     if (Array.isArray(d.windows)) openWindowPop(d.windows);
+    // 触摸板页 / 键盘页顶部那条红框提示
+    if (typeof d.blocked === 'boolean') {
+      $$('[data-blocked-warn]').forEach((el) => {
+        el.textContent = d.blocked ? BLOCKED_HINT : '';
+        el.classList.toggle('hidden', !d.blocked);
+      });
+    }
     if (typeof d.volume === 'number' && !volumeDragging) {
       els.volSlider.value = Math.round(d.volume * 100);
     }
@@ -331,6 +346,17 @@
     sensOutput.textContent = sensitivity.toFixed(1) + '×';
   });
 
+  // 游戏模式：移动改成发相对位移。游戏把光标 ClipCursor 锁在窗口中间时，
+  // 常规那套"读坐标 + 绝对定位"的位移会被吃掉，只有相对位移能转视角。
+  // 存 localStorage，免得每次进触摸板都要重开一遍。
+  const padGame = $('#padGame');
+  let padGameMode = localStorage.getItem('pad.game') === '1';
+  padGame.checked = padGameMode;
+  padGame.addEventListener('change', () => {
+    padGameMode = padGame.checked;
+    localStorage.setItem('pad.game', padGameMode ? '1' : '0');
+  });
+
   function attachPad(el) {
     let gesture = null;
     let pendingDx = 0;
@@ -343,7 +369,7 @@
       const dy = Math.round(pendingDy);
       pendingDx -= dx;
       pendingDy -= dy;
-      if (dx || dy) send('mouse.move', { dx, dy }, true);
+      if (dx || dy) send('mouse.move', { dx, dy, rel: padGameMode }, true);
     }
 
     function queueMove(dx, dy) {
@@ -431,6 +457,8 @@
   }
 
   attachPad($('#padBig'));
+  // 键盘页里嵌的那块共用同一套手势和同一个灵敏度
+  attachPad($('#kbdPad'));
 
   /* ------------------------------------------------------------ 功能键面板 */
 
@@ -446,14 +474,368 @@
     send('key.press', { key: btn.dataset.key });
   });
 
+  /* ---------------------------------------------------------- 虚拟键盘整页 */
+
+  const kbdArea = $('#kbdArea');
+  // 这四个是"点一下锁定"的修饰键，其余键都是按住＝按下
+  const KBD_MODS = new Set(['ctrl', 'shift', 'alt', 'win']);
+
+  // 布局表，每行一个数组。元素三种写法：
+  //   'a'                  键名和键帽文字都是 a，占 1 份宽
+  //   ['esc', 'Esc', 1.3]  [键名, 键帽文字, 宽度权重]
+  //   null                 空位（导航键簇右侧那格空着，跟真键盘一样）
+  const KBD_MAIN = [
+    [['esc', 'Esc', 1.3], ['grave', '`'], '1', '2', '3', '4', '5', '6', '7', '8', '9', '0',
+      ['minus', '-'], ['equal', '='], ['backspace', '⌫', 2]],
+    [['tab', 'Tab', 1.5], 'q', 'w', 'e', 'r', 't', 'y', 'u', 'i', 'o', 'p',
+      ['lbracket', '['], ['rbracket', ']'], ['backslash', '\\', 1.5]],
+    [['capslock', 'Caps', 1.8], 'a', 's', 'd', 'f', 'g', 'h', 'j', 'k', 'l',
+      ['semicolon', ';'], ['quote', "'"], ['enter', 'Enter', 2.2]],
+    [['shift', 'Shift', 2.3], 'z', 'x', 'c', 'v', 'b', 'n', 'm',
+      ['comma', ','], ['period', '.'], ['slash', '/', 1.3]],
+    [['ctrl', 'Ctrl', 1.3], ['win', 'Win', 1.2], ['alt', 'Alt', 1.2], ['space', '空格', 6]],
+  ];
+  const KBD_FUNC = [
+    [['f1', 'F1'], ['f2', 'F2'], ['f3', 'F3'], ['f4', 'F4']],
+    [['f5', 'F5'], ['f6', 'F6'], ['f7', 'F7'], ['f8', 'F8']],
+    [['f9', 'F9'], ['f10', 'F10'], ['f11', 'F11'], ['f12', 'F12']],
+    [['esc', 'Esc'], ['printscreen', 'PrtSc'], ['scrolllock', 'ScrLk'], ['pause', 'Pause']],
+    [['insert', 'Ins'], ['home', 'Home'], ['pageup', 'PgUp'], null],
+    [['delete', 'Del'], ['end', 'End'], ['pagedown', 'PgDn'], null],
+    [['left', '←'], ['up', '↑'], ['down', '↓'], ['right', '→']],
+  ];
+  const KBD_NUMPAD = [
+    [['numlock', 'NumLock'], ['numdiv', '÷'], ['nummul', '×'], ['numsub', '−']],
+    [['num7', '7'], ['num8', '8'], ['num9', '9'], ['numadd', '+']],
+    [['num4', '4'], ['num5', '5'], ['num6', '6'], ['numenter', 'Enter']],
+    [['num1', '1'], ['num2', '2'], ['num3', '3'], ['numdot', '.']],
+    [['num0', '0']],
+  ];
+
+  // 锁定中的修饰键，以及各手指正按着的普通键（pointerId -> {key, el}）
+  const kbdLatched = new Set();
+  const kbdHeld = new Map();
+
+  // 键帽的"上档字符"：Shift 锁定着的时候，这些键显示它真正会打出来的那个符号。
+  // 字母不在这里 —— 上档是大写，但把一堆字母全变成大写反而更难看，就没做。
+  const KBD_SHIFTED = {
+    '1': '!', '2': '@', '3': '#', '4': '$', '5': '%',
+    '6': '^', '7': '&', '8': '*', '9': '(', '0': ')',
+    '-': '_', '=': '+', '`': '~', '[': '{', ']': '}',
+    '\\': '|', ';': ':', "'": '"', ',': '<', '.': '>', '/': '?',
+  };
+
+  function kbdLabel(base) {
+    return kbdLatched.has('shift') ? (KBD_SHIFTED[base] || base) : base;
+  }
+
+  /// Shift 锁定状态变了之后，把已经画好的键帽文字刷一遍
+  function applyShiftLabels() {
+    kbdArea.querySelectorAll('.kbd-key').forEach((el) => {
+      if (el.dataset.base === undefined) return;
+      el.textContent = kbdLabel(el.dataset.base);
+    });
+  }
+
+  function kbdKeyEl(spec) {
+    // 空位：占一格宽但不画键（导航键簇右侧那格空着，跟真键盘的错位一样）
+    if (spec === null) {
+      const gap = document.createElement('span');
+      gap.className = 'kbd-gap';
+      return gap;
+    }
+    const [name, label, weight] = Array.isArray(spec) ? spec : [spec, spec];
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.key = name;
+    // 键帽文字会随 Shift 在"本档 / 上档"之间切，所以原始文字记在 dataset 上
+    btn.dataset.base = label;
+    btn.className = 'kbd-key' + (KBD_MODS.has(name) ? ' mod' : '');
+    btn.textContent = kbdLabel(label);
+    // 长短键靠 flex 权重拉开（Backspace / Shift / 空格）
+    if (weight && weight !== 1) btn.style.flexGrow = String(weight);
+    return btn;
+  }
+
+  function kbdRender(tab) {
+    kbdArea.textContent = '';
+    const rows = tab === 'main' ? KBD_MAIN : tab === 'func' ? KBD_FUNC : KBD_NUMPAD;
+    rows.forEach((row) => {
+      const rowEl = document.createElement('div');
+      rowEl.className = 'kbd-row';
+      row.forEach((spec) => rowEl.appendChild(kbdKeyEl(spec)));
+      kbdArea.appendChild(rowEl);
+    });
+  }
+
+  function kbdClearUi() {
+    kbdLatched.clear();
+    kbdHeld.clear();
+    kbdArea.querySelectorAll('.kbd-key.on').forEach((el) => el.classList.remove('on'));
+    // 锁定被清掉了，键帽也要从上档字符还原本档（Shift 的显示状态就靠它）
+    applyShiftLabels();
+  }
+
+  /// 离开键盘页时调用。只要还有键按着或锁着，就补一条"全部松开" ——
+  /// 卡住的 Ctrl / Win 会把之后敲的每个键都变成组合键。
+  function kbdReleaseIfNeeded() {
+    if (!kbdLatched.size && !kbdHeld.size) return;
+    kbdClearUi();
+    send('key.release_all');
+  }
+
+  kbdArea.addEventListener('pointerdown', (ev) => {
+    const el = ev.target.closest('.kbd-key');
+    if (!el) return;
+    // 挡掉默认行为，否则按住一个键滑动会变成选择文字 / 滚动页面
+    ev.preventDefault();
+    const name = el.dataset.key;
+
+    if (KBD_MODS.has(name)) {
+      // 修饰键：点一下锁定（等于一直按着），再点一下解锁
+      if (kbdLatched.delete(name)) {
+        el.classList.remove('on');
+        send('key.up', { key: name }, true);
+      } else {
+        kbdLatched.add(name);
+        el.classList.add('on');
+        send('key.down', { key: name }, true);
+      }
+      // Shift 的锁定状态变了，整块键盘的键帽要跟着换成上档字符
+      if (name === 'shift') applyShiftLabels();
+      return;
+    }
+
+    kbdHeld.set(ev.pointerId, { key: name, el });
+    el.classList.add('on');
+    send('key.down', { key: name }, true);
+  });
+
+  function kbdReleasePointer(ev) {
+    const held = kbdHeld.get(ev.pointerId);
+    if (!held) return;
+    kbdHeld.delete(ev.pointerId);
+    held.el.classList.remove('on');
+    send('key.up', { key: held.key }, true);
+  }
+  kbdArea.addEventListener('pointerup', kbdReleasePointer);
+  kbdArea.addEventListener('pointercancel', kbdReleasePointer);
+
+  $('#kbdReleaseBtn').addEventListener('click', () => {
+    kbdClearUi();
+    send('key.release_all');
+  });
+
+  $$('.kbd-tab').forEach((tab) => {
+    tab.addEventListener('click', () => {
+      $$('.kbd-tab').forEach((t) => t.classList.toggle('active', t === tab));
+      kbdRender(tab.dataset.kbdTab);
+    });
+  });
+
+  kbdRender('main');
+
+  /* ------------------------------- 键盘 + 触摸板：排布与那根小横杆 */
+
+  const kbdSplit = $('#kbdSplit');
+  const kbdHandle = $('#kbdHandle');
+  const kbdPadEl = $('#kbdPad');
+  const kbdTip = $('#kbdTip');
+  const kbdPadBtn = $('#kbdPadBtn');
+
+  // 上下排至少要这么高。低于它就左右排 —— 上下排时键盘占 3/5，五行的主键区
+  // 每行还要剩下 40 上下的高度才按得住。
+  const KBD_STACK_MIN = 380;
+  // 横杆判定区的高度 / 面板之间留的缝（要和 style.css 里的 .kbd-handle、
+  // .kbd-split 对上）
+  const KBD_HANDLE_SIZE = 26;
+  const KBD_PANEL_GAP = 8;
+
+  // 单行键最高多少。主键区一行 15 个键、每个才 18 上下宽，不封顶的话竖屏上
+  // 会被拉成细高条，高宽比很难看。
+  const KBD_MAX_ROW = 44;
+  const KBD_ROW_GAP = 6;
+
+  function keyboardRowCount() {
+    const tab = document.querySelector('.kbd-tab.active');
+    const id = tab ? tab.dataset.kbdTab : 'main';
+    const rows = id === 'func' ? KBD_FUNC : id === 'numpad' ? KBD_NUMPAD : KBD_MAIN;
+    return rows.length;
+  }
+
+  /// 键盘按"每行封顶"算出来的自然高度，多出来的地方留给触摸板（或者空着）
+  function keyboardNaturalHeight() {
+    const rows = keyboardRowCount();
+    return rows * KBD_MAX_ROW + (rows - 1) * KBD_ROW_GAP;
+  }
+
+  // 触摸板的开关默认就是开的 —— 这一页本来就是"键盘 + 触摸板"一起用
+  let kbdPadShown = true;
+  let kbdPadFirst = false;
+
+  // 换边时让两块面板滑过去，而不是啪一下跳过去。
+  // 用的是 FLIP：先量旧位置 → 改布局 → 再让它从旧位置动画回新位置。
+  function withFlip(apply) {
+    const els = [kbdArea, kbdPadEl, kbdHandle]
+      .filter((el) => !el.classList.contains('hidden'));
+    const before = els.map((el) => el.getBoundingClientRect());
+    apply();
+    els.forEach((el, i) => {
+      const after = el.getBoundingClientRect();
+      const dx = before[i].left - after.left;
+      const dy = before[i].top - after.top;
+      if (!dx && !dy) return;
+      el.style.transition = 'none';
+      el.style.transform = `translate(${dx}px, ${dy}px)`;
+      requestAnimationFrame(() => {
+        el.style.transition = 'transform .24s cubic-bezier(.2,.7,.3,1)';
+        el.style.transform = '';
+        el.addEventListener('transitionend', function done() {
+          el.style.transition = '';
+          el.removeEventListener('transitionend', done);
+        });
+      });
+    });
+  }
+
+  // 触摸板的手动大小（px，只算主方向）。上下排记的是高度、左右排记的是宽度，
+  // 两维各记各的 —— 换个方向再换回来，还回到之前那个大小。
+  // 0 = 这一维还没手动调过，用自动值。
+  let kbdPadSizeV = 0;
+  let kbdPadSizeH = 0;
+  // 下面这几个是布局时顺手算出来给拖动用的
+  let kbdPadAuto = 0;
+  let kbdRest = 0;
+  let kbdLayoutVertical = true;
+  // 拖动时把两块限制在这个范围里，免得拖成一条缝或者把键盘挤没
+  const KBD_PAD_MIN = 120;
+  const KBD_KEYBOARD_MIN = 140;
+
+  function padManual() {
+    return kbdLayoutVertical ? kbdPadSizeV : kbdPadSizeH;
+  }
+
+  function setPadManual(value) {
+    if (kbdLayoutVertical) {
+      kbdPadSizeV = value;
+    } else {
+      kbdPadSizeH = value;
+    }
+  }
+
+  // animate 只在"展开收起 / 换边"时给 true。打开整页那一下位置还没稳定，
+  // 直接摆好就行，别播动画。
+  function layoutKbdSplit(animate) {
+    kbdHandle.classList.toggle('hidden', !kbdPadShown);
+    kbdPadEl.classList.toggle('hidden', !kbdPadShown);
+    kbdTip.classList.toggle('hidden', kbdPadShown);
+    kbdPadBtn.classList.toggle('active', kbdPadShown);
+
+    const apply = () => {
+      // 方向要等它真的显示出来才量得准（隐藏时 clientHeight 是 0）
+      const vertical = kbdPadShown && kbdSplit.clientHeight >= KBD_STACK_MIN;
+      kbdSplit.classList.toggle('vertical', vertical);
+      kbdSplit.classList.toggle('horizontal', kbdPadShown && !vertical);
+      kbdSplit.classList.toggle('pad-first', kbdPadFirst);
+
+      // 触摸板占主方向的多少是算出来写死的（不用 flex 比例），拖动才改得动
+      const span = vertical ? kbdSplit.clientHeight : kbdSplit.clientWidth;
+      const rest = Math.max(0, span - KBD_HANDLE_SIZE - KBD_PANEL_GAP * 2);
+      const natural = keyboardNaturalHeight();
+      // 自动摆法：键盘先拿 min(3/5, 自然高度)，剩下的全给触摸板
+      const autoPad = vertical
+        ? rest - Math.min(natural, rest * 0.6)
+        : rest * 0.5;
+      const maxPad = Math.max(KBD_PAD_MIN, rest - KBD_KEYBOARD_MIN);
+      // 这里必须按"这一轮的方向"直接取对应那一维 —— 不能用 padManual()，
+      // 它读的是上一轮的方向（触摸板隐藏时会被算成横向，把纵向的值读丢）
+      const manual = vertical ? kbdPadSizeV : kbdPadSizeH;
+      const padSize = Math.min(Math.max(manual > 0 ? manual : autoPad, KBD_PAD_MIN), maxPad);
+      kbdLayoutVertical = vertical;
+      kbdRest = rest;
+      kbdPadAuto = autoPad;
+      kbdPadEl.style.height = vertical ? padSize + 'px' : '';
+      kbdPadEl.style.width = vertical ? '' : padSize + 'px';
+
+      // 键盘封顶只在"它自己一个人占这块地方"或者左右排的时候做；
+      // 上下排 + 触摸板在场时尺寸是用户拖出来的，不再硬压
+      kbdArea.style.maxHeight = vertical && kbdPadShown ? '' : natural + 'px';
+    };
+
+    if (animate) withFlip(apply);
+    else apply();
+  }
+
+  kbdPadBtn.addEventListener('click', () => {
+    kbdPadShown = !kbdPadShown;
+    layoutKbdSplit(true);
+  });
+
+  let kbdDragId = null;
+  let kbdDragLast = 0;
+  let kbdDragVertical = true;
+  let kbdTapStart = null;
+
+  kbdHandle.addEventListener('pointerdown', (ev) => {
+    if (kbdDragId !== null) return;
+    // 挡掉默认行为，否则按住横杆拖动会变成滚页面
+    ev.preventDefault();
+    kbdDragId = ev.pointerId;
+    kbdDragVertical = kbdSplit.classList.contains('vertical');
+    kbdDragLast = kbdDragVertical ? ev.clientY : ev.clientX;
+    kbdTapStart = { x: ev.clientX, y: ev.clientY, at: Date.now() };
+    // 从当前大小接着拖：这一维还没手动调过的话，先把自动值固化下来
+    if (!(padManual() > 0)) setPadManual(kbdPadAuto);
+    kbdHandle.classList.add('dragging');
+    kbdHandle.setPointerCapture(ev.pointerId);
+  });
+
+  kbdHandle.addEventListener('pointermove', (ev) => {
+    if (ev.pointerId !== kbdDragId) return;
+    const pos = kbdDragVertical ? ev.clientY : ev.clientX;
+    kbdDragUpdate(pos - kbdDragLast);
+    kbdDragLast = pos;
+  });
+
+  /// 拖动改的是触摸板的主方向尺寸（上下排是高度、左右排是宽度）。
+  /// 触摸板排在后面时，往下拖＝把它挤小（键盘变大）；排在前面时反过来。
+  function kbdDragUpdate(delta) {
+    const next = padManual() + (kbdPadFirst ? delta : -delta);
+    const maxPad = Math.max(KBD_PAD_MIN, kbdRest - KBD_KEYBOARD_MIN);
+    setPadManual(Math.min(Math.max(next, KBD_PAD_MIN), maxPad));
+    layoutKbdSplit(false);
+  }
+
+  function endKbdDrag(ev) {
+    if (ev.pointerId !== kbdDragId) return;
+    kbdDragId = null;
+    kbdHandle.classList.remove('dragging');
+    // 没怎么动过就当是"点了一下" —— 点横杆是直接换到对面
+    const tapped = kbdTapStart &&
+      Date.now() - kbdTapStart.at < 350 &&
+      Math.hypot(ev.clientX - kbdTapStart.x, ev.clientY - kbdTapStart.y) < 8;
+    kbdTapStart = null;
+    if (tapped) kbdPadFirst = !kbdPadFirst;
+    layoutKbdSplit(true);
+  }
+  kbdHandle.addEventListener('pointerup', endKbdDrag);
+  kbdHandle.addEventListener('pointercancel', endKbdDrag);
+
+  // resize 是"屏幕变了要重排"，不是用户操作，别播动画
+  window.addEventListener('resize', () => layoutKbdSplit(false));
+
+  layoutKbdSplit(false);
+
   /* ------------------------------------------------------- 菜单与整页浮层 */
 
   const sheetOverlays = [$('#menuOverlay'), $('#helpOverlay')];
-  const pageOverlays = [$('#padPage'), $('#screenPage')];
+  const pageOverlays = [$('#padPage'), $('#screenPage'), $('#keyboardPage')];
   const allOverlays = sheetOverlays.concat(pageOverlays);
   let lockedScroll = 0;
 
   function showOverlay(el) {
+    // 从键盘页切走（或者直接关了）时把按着的键松开，别把它们留在电脑上
+    if (el !== $('#keyboardPage')) kbdReleaseIfNeeded();
     allOverlays.forEach((item) => item.classList.toggle('hidden', item !== el));
     // 锁住背后主页：body 变 position:fixed 并上移 scrollY，看着没变但滚不动了
     if (el && !document.documentElement.classList.contains('modal-open')) {
@@ -463,9 +845,12 @@
     }
     if (el === $('#screenPage')) loadScreens();
     else stopAutoRefresh();
+    // 键盘页要等显示出来才量得准高度，所以每次打开都重排一次
+    if (el === $('#keyboardPage')) layoutKbdSplit();
   }
 
   function hideOverlays() {
+    kbdReleaseIfNeeded();
     allOverlays.forEach((el) => el.classList.add('hidden'));
     stopAutoRefresh();
     if (!document.documentElement.classList.contains('modal-open')) return;
@@ -478,13 +863,19 @@
   $('#closeMenuBtn').addEventListener('click', hideOverlays);
   $('#closePadBtn').addEventListener('click', hideOverlays);
   $('#closeScreenBtn').addEventListener('click', hideOverlays);
+  $('#closeKeyboardBtn').addEventListener('click', hideOverlays);
   $('#closeHelpBtn').addEventListener('click', hideOverlays);
+
+  const menuTargets = {
+    pad: '#padPage',
+    keyboard: '#keyboardPage',
+    screen: '#screenPage',
+    help: '#helpOverlay',
+  };
 
   $$('.menu-item').forEach((item) => {
     item.addEventListener('click', () => {
-      const target = $(item.dataset.page === 'pad' ? '#padPage'
-        : item.dataset.page === 'screen' ? '#screenPage' : '#helpOverlay');
-      showOverlay(target);
+      showOverlay($(menuTargets[item.dataset.page] || '#helpOverlay'));
     });
   });
 

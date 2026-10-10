@@ -28,6 +28,7 @@ import netinfo
 import qrwin
 import server
 import settings
+import wininput
 
 logger = logging.getLogger("rglazybum")
 
@@ -35,6 +36,11 @@ MUTEX_NAME = "Local\\RGLazyBum.Tray"
 ERROR_ALREADY_EXISTS = 183
 
 _MUTEX_HANDLE: int | None = None
+
+# 本进程是不是管理员。菜单里「以管理员身份重启」要不要灰掉就看它。
+# 游戏多半以管理员运行，而 Windows 的 UIPI 会把普通权限进程注入的鼠标键盘
+# 静默丢掉 —— 提权是让虚拟键盘/触摸板在游戏里生效的唯一办法。
+_IS_ADMIN = wininput.is_elevated()
 
 # 图标状态色：一眼看出是不是出问题了
 _COLOR_OK = "#1f7ae0"        # 服务在跑，防火墙已放行
@@ -83,6 +89,63 @@ def acquire_single_instance() -> bool:
 
     # 保持引用，进程活着期间不释放
     _MUTEX_HANDLE = handle
+    return True
+
+
+def release_single_instance() -> None:
+    """把单实例互斥体让出去。
+
+    提权重启前必须先让 —— 新实例启动时也要抢同一个互斥体，我们不放它就直接
+    退出了（"已有实例在运行"）。提权失败的话再 acquire 回来。
+    """
+    global _MUTEX_HANDLE
+    if _MUTEX_HANDLE is None:
+        return
+    try:
+        ctypes.windll.kernel32.CloseHandle(ctypes.c_void_p(_MUTEX_HANDLE))
+    except OSError:
+        logger.debug("释放单实例互斥体失败", exc_info=True)
+    _MUTEX_HANDLE = None
+
+
+def _relaunch_as_admin() -> bool:
+    """以管理员身份重新拉起自己（会弹 UAC）。用户点了"否"或失败返回 False。
+
+    提权只能走 ShellExecuteW 的 "runas" 动词 —— CreateProcess 是没法提权的。
+    """
+    if getattr(sys, "frozen", False):
+        # 打包后重新拉自己这个 exe
+        exe = sys.executable
+        cwd = os.path.dirname(exe)
+        rest = list(sys.argv[1:])
+    else:
+        # 源码模式：python.exe + tray.py
+        script = os.path.join(os.path.dirname(os.path.abspath(__file__)), "tray.py")
+        exe = sys.executable
+        cwd = os.path.dirname(script)
+        rest = [script, *sys.argv[1:]]
+
+    params = " ".join(f'"{a}"' if " " in a else a for a in rest)
+    shell32 = ctypes.windll.shell32
+    shell32.ShellExecuteW.restype = ctypes.c_void_p
+    shell32.ShellExecuteW.argtypes = [
+        ctypes.c_void_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_wchar_p,
+        ctypes.c_int,
+    ]
+    try:
+        result = shell32.ShellExecuteW(None, "runas", exe, params or None, cwd, 1)
+    except OSError:
+        logger.exception("提权启动失败")
+        return False
+    # 返回值 <= 32 一律算失败：5 是"被拒绝"（用户在 UAC 上点了否），32 是找不到文件
+    code = int(result) if result else 0
+    if code <= 32:
+        logger.warning("提权启动未成功（ShellExecuteW 返回 %s）", code)
+        return False
     return True
 
 
@@ -465,6 +528,40 @@ class TrayApp:
         self._notify("服务已重启")
         logger.info("服务已重启（端口 %d）", self.port)
 
+    def _runas_label(self, item: pystray.MenuItem) -> str:
+        """已经是管理员了就把菜单项说清楚，别让人反复点。"""
+        return "已是管理员权限" if _IS_ADMIN else "以管理员身份重启"
+
+    def on_restart_as_admin(
+        self, icon: pystray.Icon, item: pystray.MenuItem
+    ) -> None:
+        logger.info("收到「以管理员身份重启」请求")
+        threading.Thread(
+            target=self._restart_as_admin, name="runas", daemon=True
+        ).start()
+
+    def _restart_as_admin(self) -> None:
+        """提权重启：让出互斥体和端口 → 拉一个管理员实例 → 自己退出。
+
+        端口必须先让：新实例是按"第一个空闲端口"挑的，我们占着 8765 它就会挑到
+        38765，手机那边的地址就对不上了。互斥体同理，不放新实例会直接退出。
+        """
+        release_single_instance()
+        if not self.stop_service(5.0):
+            logger.warning("提权重启前，旧服务未能在 5 秒内退出")
+
+        if _relaunch_as_admin():
+            logger.info("已拉起管理员实例，本进程退出")
+            self.on_quit(self._icon, None)
+            return
+
+        # 用户在 UAC 上点了"否"，或者提权失败 —— 东西都恢复回来，别把人晾着
+        logger.warning("提权未成功，恢复原服务")
+        acquire_single_instance()
+        self.start_service()
+        self._refresh_menu()
+        self._notify("提权没成功，服务仍以普通权限运行")
+
     def on_open_log(self, icon: pystray.Icon, item: pystray.MenuItem) -> None:
         logger.info("打开日志文件")
         threading.Thread(target=_open_log, daemon=True).start()
@@ -584,6 +681,11 @@ class TrayApp:
             pystray.MenuItem("打开日志", self.on_open_log),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("重启服务", self.on_restart_service),
+            pystray.MenuItem(
+                self._runas_label,
+                self.on_restart_as_admin,
+                enabled=not _IS_ADMIN,
+            ),
             pystray.MenuItem("退出", self.on_quit),
         )
         self._icon = pystray.Icon(

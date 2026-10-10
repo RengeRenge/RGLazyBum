@@ -1,9 +1,7 @@
 /// 触摸板整页。
 ///
-/// 手势和网页版逐条对齐：
-///   单指滑动 → 移动光标（乘灵敏度）
-///   轻点     → 左键   双指轻点 → 右键
-///   双指上下滑 → 滚轮（往下滑＝往下滚，跟手机上看网页一个方向）
+/// 面板本体在 touch_pad.dart —— 键盘页里嵌的那块用的是同一个控件，手势逻辑只有
+/// 一份。这一页多出来的是灵敏度、鼠标键和游戏模式开关。
 library;
 
 import 'package:flutter/material.dart';
@@ -11,6 +9,7 @@ import 'package:flutter/material.dart';
 import '../core/client.dart';
 import 'common.dart';
 import 'theme.dart';
+import 'touch_pad.dart';
 
 class PadPage extends StatefulWidget {
   const PadPage({super.key});
@@ -22,103 +21,28 @@ class PadPage extends StatefulWidget {
 class _PadPageState extends State<PadPage> {
   final RemoteClient _client = RemoteClient.instance;
 
-  final Map<int, Offset> _pointers = <int, Offset>{};
-  bool _pressed = false;
-  int _maxFingers = 0;
-  double _travel = 0;
-  Offset _anchor = Offset.zero;
-  DateTime _startedAt = DateTime.now();
-  double _scrollAcc = 0;
-  double _pendingDx = 0;
-  double _pendingDy = 0;
   double _sensitivity = 2;
 
-  static const double _tapMs = 260;
-  static const double _tapSlop = 12;
-  static const double _notch = 20; // 滚一格要滑多少像素
+  /// 电脑上前台窗口是不是"管理员进程"（注入会被丢掉）。只在它真变化时重建。
+  bool _blocked = false;
 
-  Offset _median() {
-    if (_pointers.length < 2) return _pointers.values.first;
-    final points = _pointers.values.toList();
-    final a = points[0];
-    final b = points[1];
-    return Offset((a.dx + b.dx) / 2, (a.dy + b.dy) / 2);
+  @override
+  void initState() {
+    super.initState();
+    _blocked = _client.inputBlocked;
+    _client.addListener(_onClientChanged);
   }
 
-  void _onDown(PointerDownEvent event) {
-    _pointers[event.pointer] = event.localPosition;
-    if (_pointers.length == 1) {
-      _startedAt = DateTime.now();
-      _maxFingers = 1;
-      _travel = 0;
-      _scrollAcc = 0;
-      _pendingDx = 0;
-      _pendingDy = 0;
-    }
-    if (_pointers.length > _maxFingers) _maxFingers = _pointers.length;
-    _anchor = _median();
-    setState(() => _pressed = true);
+  @override
+  void dispose() {
+    _client.removeListener(_onClientChanged);
+    super.dispose();
   }
 
-  void _onMove(PointerMoveEvent event) {
-    if (!_pointers.containsKey(event.pointer)) return;
-    _pointers[event.pointer] = event.localPosition;
-
-    final current = _median();
-    final dx = current.dx - _anchor.dx;
-    final dy = current.dy - _anchor.dy;
-    _anchor = current;
-    _travel += dx.abs() + dy.abs();
-
-    if (_pointers.length >= 2) {
-      // 双指滑动 = 滚轮，和触屏上的自然滚动方向一致
-      _scrollAcc += -dy;
-      final notches = (_scrollAcc / _notch).truncate();
-      if (notches != 0) {
-        _scrollAcc -= notches * _notch;
-        _client.send('mouse.wheel', {'delta': -notches * 120}, true);
-      }
-      return;
+  void _onClientChanged() {
+    if (mounted && _blocked != _client.inputBlocked) {
+      setState(() => _blocked = _client.inputBlocked);
     }
-
-    _pendingDx += dx * _sensitivity;
-    _pendingDy += dy * _sensitivity;
-    _flushMove();
-  }
-
-  void _flushMove() {
-    final dx = _pendingDx.round();
-    final dy = _pendingDy.round();
-    _pendingDx -= dx; // 不够一个像素的零头留着，攒够再发
-    _pendingDy -= dy;
-    if (dx != 0 || dy != 0) {
-      _client.send('mouse.move', {'dx': dx, 'dy': dy}, true);
-    }
-  }
-
-  void _onUp(PointerEvent event) {
-    final wasTracked = _pointers.remove(event.pointer) != null;
-    if (_pointers.isNotEmpty) {
-      _anchor = _median();
-      return;
-    }
-
-    setState(() => _pressed = false);
-    if (!wasTracked) return;
-
-    // 轻点：时间短 + 几乎没移动，算一次点击；双指轻点 = 右键
-    final elapsed = DateTime.now().difference(_startedAt).inMilliseconds;
-    if (elapsed < _tapMs && _travel < _tapSlop) {
-      _client.send('mouse.button', {
-        'button': _maxFingers >= 2 ? 'right' : 'left',
-        'action': 'click',
-      }, true);
-    }
-  }
-
-  void _onCancel(PointerCancelEvent event) {
-    _pointers.remove(event.pointer);
-    if (_pointers.isEmpty) setState(() => _pressed = false);
   }
 
   @override
@@ -141,7 +65,17 @@ class _PadPageState extends State<PadPage> {
                 ],
               ),
               const Gap(10),
-              Expanded(child: _pad()),
+              // 前台是管理员进程时，注入会被系统静默丢掉，先说清楚
+              if (_blocked) ...[
+                const WarningNote(kBlockedHint),
+                const Gap(10),
+              ],
+              Expanded(
+                child: TouchPad(
+                  sensitivity: _sensitivity,
+                  tip: '单指滑动移动光标 · 轻点＝左键 · 双指轻点＝右键 · 双指上下滑动＝滚轮',
+                ),
+              ),
               const Gap(10),
               Row(
                 children: [
@@ -196,6 +130,8 @@ class _PadPageState extends State<PadPage> {
                   ),
                 ],
               ),
+              const Gap(6),
+              _gameModeRow(),
             ],
           ),
         ),
@@ -203,46 +139,53 @@ class _PadPageState extends State<PadPage> {
     );
   }
 
-  Widget _pad() {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(12),
-      child: Listener(
-        onPointerDown: _onDown,
-        onPointerMove: _onMove,
-        onPointerUp: _onUp,
-        onPointerCancel: _onCancel,
-        behavior: HitTestBehavior.opaque,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 120),
-              decoration: BoxDecoration(
-                border: Border.all(color: _pressed ? kAccent : kLine),
-                borderRadius: BorderRadius.circular(12),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: _pressed
-                      ? const [Color(0xFF161B26), Color(0xFF11151D)]
-                      : const [Color(0xFF14171D), Color(0xFF10131A)],
+  /// 游戏模式开关。开关是自绘的，跟网页版那个 .toggle 一个样子。
+  ///
+  /// 值存在 touch_pad.dart 里，键盘页嵌的那块触摸板读的是同一个开关。
+  Widget _gameModeRow() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => setState(() => padGameMode = !padGameMode),
+      child: Row(
+        children: [
+          const Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('游戏模式', style: TextStyle(fontSize: 13)),
+                SizedBox(height: 2),
+                Text(
+                  '用相对位移，光标被游戏锁住时也能转视角',
+                  style: TextStyle(fontSize: 11, color: kMuted),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            width: 40,
+            height: 23,
+            decoration: BoxDecoration(
+              color: padGameMode ? kAccent.withValues(alpha: .18) : kCard2,
+              border: Border.all(color: padGameMode ? kAccent : kLine),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: AnimatedAlign(
+              duration: const Duration(milliseconds: 150),
+              alignment: padGameMode ? Alignment.centerRight : Alignment.centerLeft,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 2),
+                width: 17,
+                height: 17,
+                decoration: BoxDecoration(
+                  color: padGameMode ? kAccent : kMuted,
+                  shape: BoxShape.circle,
                 ),
               ),
             ),
-            const Positioned(
-              left: 0,
-              right: 0,
-              bottom: 10,
-              child: IgnorePointer(
-                child: Text(
-                  '单指滑动移动光标 · 轻点＝左键 · 双指轻点＝右键 · 双指上下滑动＝滚轮',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: Color(0xFF5B6472)),
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

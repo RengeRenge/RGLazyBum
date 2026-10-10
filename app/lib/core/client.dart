@@ -71,6 +71,11 @@ class RemoteClient extends ChangeNotifier {
   /// 两个图标之间切，靠它决定画哪个。
   bool windowMaximized = false;
 
+  /// 电脑上前台窗口是"以管理员身份运行"的进程（游戏多半如此），我们发过去的
+  /// 鼠标键盘会被 Windows 的 UIPI 静默丢掉。界面据此给出提示 —— 否则用户只会
+  /// 觉得"程序坏了"，一条报错都看不到。
+  bool inputBlocked = false;
+
   /// 当前这条媒体会话支不支持快进/快退。网易云音乐这类只做了播放/暂停/切歌的
   /// 播放器会报 false，界面就把那两个键灰掉——位置请求它们收下却不动，
   /// 光看返回值分辨不出来。
@@ -279,6 +284,9 @@ class RemoteClient extends ChangeNotifier {
 
     final maximized = data['maximized'];
     if (maximized is bool) windowMaximized = maximized;
+
+    final blocked = data['blocked'];
+    if (blocked is bool) inputBlocked = blocked;
 
     // window.list 的答复，只有点了标题才会来
     final windows = data['windows'];

@@ -20,10 +20,14 @@ from ctypes import wintypes
 __all__ = [
     "InputError",
     "move_mouse",
+    "move_mouse_relative",
     "mouse_button",
     "mouse_wheel",
     "press_key",
     "press_named_key",
+    "key_down",
+    "key_up",
+    "release_all_keys",
     "hotkey",
     "type_text",
     "move_window_to_other_monitor",
@@ -36,6 +40,8 @@ __all__ = [
     "volume_key_mute",
     "screen_size",
     "cursor_pos",
+    "foreground_blocks_input",
+    "is_elevated",
 ]
 
 _user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -146,6 +152,35 @@ _dwmapi.DwmGetWindowAttribute.argtypes = (
 )
 _dwmapi.DwmGetWindowAttribute.restype = ctypes.c_long
 
+# 查进程完整性级别（判断前台窗口是不是管理员）用得到
+_kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+_advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+
+_kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+_kernel32.OpenProcess.restype = wintypes.HANDLE
+_kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+_kernel32.CloseHandle.restype = wintypes.BOOL
+_kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+_advapi32.OpenProcessToken.argtypes = (
+    wintypes.HANDLE,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.HANDLE),
+)
+_advapi32.OpenProcessToken.restype = wintypes.BOOL
+_advapi32.GetTokenInformation.argtypes = (
+    wintypes.HANDLE,
+    ctypes.c_int,
+    ctypes.c_void_p,
+    wintypes.DWORD,
+    ctypes.POINTER(wintypes.DWORD),
+)
+_advapi32.GetTokenInformation.restype = wintypes.BOOL
+_user32.GetWindowThreadProcessId.argtypes = (
+    wintypes.HWND,
+    ctypes.POINTER(wintypes.DWORD),
+)
+_user32.GetWindowThreadProcessId.restype = wintypes.DWORD
+
 INPUT_MOUSE = 0
 INPUT_KEYBOARD = 1
 
@@ -203,8 +238,39 @@ VK_M = 0x4D
 VK_INSERT = 0x2D
 VK_DELETE = 0x2E
 
-# 手机端按键面板能按的名字。只认这张表，前端传什么进来都注入不了别的键。
-_NAMED_KEYS = {
+VK_CAPITAL = 0x14
+VK_PAUSE = 0x13
+VK_SNAPSHOT = 0x2C
+VK_SCROLL = 0x91
+VK_RWIN = 0x5C
+VK_APPS = 0x5D
+VK_F1 = 0x70
+VK_NUMLOCK = 0x90
+VK_NUMPAD0 = 0x60
+VK_MULTIPLY = 0x6A
+VK_ADD = 0x6B
+VK_SUBTRACT = 0x6D
+VK_DECIMAL = 0x6E
+VK_DIVIDE = 0x6F
+# OEM 区（符号键）的码位是按 US 布局给的，别的布局下键帽不一样，功能相同
+VK_OEM_1 = 0xBA       # ;
+VK_OEM_PLUS = 0xBB    # =
+VK_OEM_COMMA = 0xBC   # ,
+VK_OEM_MINUS = 0xBD   # -
+VK_OEM_PERIOD = 0xBE  # .
+VK_OEM_2 = 0xBF       # /
+VK_OEM_3 = 0xC0       # `
+VK_OEM_4 = 0xDB       # [
+VK_OEM_5 = 0xDC       # \
+VK_OEM_6 = 0xDD       # ]
+VK_OEM_7 = 0xDE       # '
+
+# 手机端能按的键名。只认这张表，前端传什么进来都注入不了别的键。
+#
+# 命名尽量贴着键帽上的字：字母/数字就是字符本身，功能键 f1..f12，小键盘统一
+# num 前缀，其余用读得出来的英文名。最上面那批老名字是网页/App 的"键盘输入"
+# 卡片一直在用的，改名会让旧客户端失效。
+_NAMED_KEYS: dict[str, int] = {
     "enter": VK_RETURN,
     "backspace": VK_BACK,
     "tab": VK_TAB,
@@ -221,7 +287,59 @@ _NAMED_KEYS = {
     "up": VK_UP,
     "down": VK_DOWN,
     "win": VK_LWIN,
+    # 修饰键。虚拟键盘上这四个是"点一下锁定"，左右不分家
+    "ctrl": VK_CONTROL,
+    "shift": VK_SHIFT,
+    "alt": VK_MENU,
+    "rwin": VK_RWIN,
+    # 其它常用键
+    "capslock": VK_CAPITAL,
+    "printscreen": VK_SNAPSHOT,
+    "scrolllock": VK_SCROLL,
+    "pause": VK_PAUSE,
+    "apps": VK_APPS,
+    # 符号键
+    "minus": VK_OEM_MINUS,
+    "equal": VK_OEM_PLUS,
+    "lbracket": VK_OEM_4,
+    "rbracket": VK_OEM_6,
+    "backslash": VK_OEM_5,
+    "semicolon": VK_OEM_1,
+    "quote": VK_OEM_7,
+    "comma": VK_OEM_COMMA,
+    "period": VK_OEM_PERIOD,
+    "slash": VK_OEM_2,
+    "grave": VK_OEM_3,
+    # 小键盘
+    "numlock": VK_NUMLOCK,
+    "numdiv": VK_DIVIDE,
+    "nummul": VK_MULTIPLY,
+    "numsub": VK_SUBTRACT,
+    "numadd": VK_ADD,
+    "numdot": VK_DECIMAL,
+    "numenter": VK_RETURN,
 }
+
+# 字母和数字的码位就是 ASCII，直接按字符生成
+for _ch in "abcdefghijklmnopqrstuvwxyz":
+    _NAMED_KEYS[_ch] = ord(_ch.upper())
+for _digit in "0123456789":
+    _NAMED_KEYS[_digit] = ord(_digit)
+# F1-F12
+for _fn in range(1, 13):
+    _NAMED_KEYS[f"f{_fn}"] = VK_F1 + _fn - 1
+# 小键盘的数字
+for _np in range(10):
+    _NAMED_KEYS[f"num{_np}"] = VK_NUMPAD0 + _np
+
+# 这几个键的码位跟主键区撞车，只能靠强制补 E0 前缀区分（小键盘回车的码位
+# 跟主回车一样，不加前缀系统会当成主回车）
+_FORCE_EXTENDED_NAMES = frozenset({"numenter"})
+
+# 现在按着、还没松开的键，键名 -> (vk, 是否带 E0 前缀)。
+# 手机断线、或者用户直接退出键盘页时，这些键得补一次松开，否则修饰键会卡在
+# 按下状态 —— 卡住的 Win 键会让之后敲的每个键都变成系统快捷键。
+_held_keys: dict[str, tuple[int, bool]] = {}
 
 VK_VOLUME_MUTE = 0xAD
 VK_VOLUME_DOWN = 0xAE
@@ -236,6 +354,7 @@ VK_MEDIA_PLAY_PAUSE = 0xB3
 _EXTENDED_VKS = frozenset(
     {
         0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28,  # PgUp PgDn End Home ← ↑ → ↓
+        0x2C,                                             # PrintScreen
         0x2D, 0x2E,                                       # Insert Delete
         0x5B, 0x5C, 0x5D,                                 # LWin RWin Apps
         0x6F, 0x90,                                       # 小键盘 / NumLock
@@ -327,6 +446,77 @@ def foreground_title() -> str:
     往手机上推一大坨。
     """
     return _window_title(_user32.GetForegroundWindow())
+
+
+# ---------------------------------------------------------- 注入是否会被丢掉
+
+_PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+_TOKEN_QUERY = 0x0008
+_TOKEN_ELEVATION = 20
+
+# 本进程是否提权、以及前台进程是否提权，都按 PID 缓存 —— 这个判断每秒都会被
+# 调一次，窗口没换就不该重复查。
+_self_elevated: bool | None = None
+_blocked_cache: tuple[int, bool] | None = None
+
+
+def _process_elevated(pid: int) -> bool | None:
+    """这个进程是不是以管理员身份运行；查不到返回 None。"""
+    handle = _kernel32.OpenProcess(_PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        return None
+    try:
+        token = wintypes.HANDLE()
+        if not _advapi32.OpenProcessToken(handle, _TOKEN_QUERY, ctypes.byref(token)):
+            return None
+        try:
+            value = wintypes.DWORD()
+            size = wintypes.DWORD()
+            ok = _advapi32.GetTokenInformation(
+                token,
+                _TOKEN_ELEVATION,
+                ctypes.byref(value),
+                ctypes.sizeof(value),
+                ctypes.byref(size),
+            )
+            return bool(value.value) if ok else None
+        finally:
+            _kernel32.CloseHandle(token)
+    finally:
+        _kernel32.CloseHandle(handle)
+
+
+def is_elevated() -> bool:
+    """本进程是不是以管理员身份运行。"""
+    global _self_elevated
+    if _self_elevated is None:
+        _self_elevated = bool(_process_elevated(_kernel32.GetCurrentProcessId()))
+    return _self_elevated
+
+
+def foreground_blocks_input() -> bool:
+    """前台窗口的权限比我们高吗？是的话，我们的注入会被系统静默丢掉。
+
+    Windows 的 UIPI 规则：低完整性进程不能往高完整性窗口注入输入。带反作弊的
+    游戏（原神这类）通常以管理员身份运行，而本程序是普通权限 —— 于是 SendInput
+    返回成功、实际什么都没发生，手机端看着就是"滑了没反应、按键也没反应"，
+    而且一条报错都没有。
+
+    这种情况下唯一的解法是把本程序也以管理员身份运行（或者游戏别用管理员跑）。
+    """
+    global _blocked_cache
+    # 自己就是管理员的话，注入不受 UIPI 限制
+    if is_elevated():
+        return False
+
+    pid = wintypes.DWORD()
+    _user32.GetWindowThreadProcessId(_user32.GetForegroundWindow(), ctypes.byref(pid))
+    if _blocked_cache is not None and _blocked_cache[0] == pid.value:
+        return _blocked_cache[1]
+
+    blocked = bool(_process_elevated(pid.value))
+    _blocked_cache = (pid.value, blocked)
+    return blocked
 
 
 # ---------------------------------------------------------------- 窗口列表
@@ -512,6 +702,23 @@ def move_mouse(dx: int, dy: int) -> None:
     )
 
 
+def move_mouse_relative(dx: int, dy: int) -> None:
+    """把光标按相对位移移动 (dx, dy) 像素 —— 触摸板的"游戏模式"走这条。
+
+    平时的 move_mouse 是"读当前位置 → 算目标点 → 绝对定位"，这套闭环要求光标
+    真的会跟着动。而游戏（原神这类）在看视角时会把光标用 ClipCursor 锁在窗口
+    中间并隐藏、每帧拉回原位，于是 GetCursorPos 永远返回同一个点，算出来的目标
+    位置又被裁剪规则夹回去，位移凭空消失 —— 表现就是"触摸板滑了没反应"。
+
+    这里不读坐标、也不发绝对定位，只发一个纯增量的 MOUSEEVENTF_MOVE。系统把它
+    按位移直接投递给前台窗口，游戏读的 raw input 走的也是这条路，光标被锁、被
+    隐藏都不影响。副作用是光标本身不会动，所以只适合游戏，平时别用。
+    """
+    if not dx and not dy:
+        return
+    _send(_mouse_input(dx, dy, 0, MOUSEEVENTF_MOVE))
+
+
 _BUTTON_FLAGS = {
     "left": (MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP),
     "right": (MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP),
@@ -550,13 +757,55 @@ def press_key(vk: int, extended: bool | None = None) -> None:
     _send(_key_input(vk, flags), _key_input(vk, flags | KEYEVENTF_KEYUP))
 
 
-def press_named_key(name: str) -> None:
-    """按一下按键面板上的功能键（回车、退格、方向键……）。只认 _NAMED_KEYS 里的名字。"""
+def _named_key(name: str) -> tuple[int, bool]:
+    """把前端传的键名翻成 (vk, 是否要带 E0 前缀)。"""
     try:
         vk = _NAMED_KEYS[name]
     except KeyError:
         raise ValueError(f"未知按键：{name}") from None
-    press_key(vk)
+    if name in _FORCE_EXTENDED_NAMES:
+        return vk, True
+    return vk, vk in _EXTENDED_VKS
+
+
+def press_named_key(name: str) -> None:
+    """按一下按键面板上的功能键（回车、退格、方向键……）。只认 _NAMED_KEYS 里的名字。"""
+    vk, extended = _named_key(name)
+    press_key(vk, extended)
+
+
+def key_down(name: str) -> None:
+    """按下某个键但不松开 —— 虚拟键盘上手指按住一个键就是这条。
+
+    单独发按下而不配套松开，是为了支持"按住 W 往前走"这种游戏操作。代价是
+    状态留在了系统里，所以这里记一笔，断线或退出键盘页时统一补偿松开。
+    """
+    vk, extended = _named_key(name)
+    _send(_key_input(vk, KEYEVENTF_EXTENDEDKEY if extended else 0))
+    _held_keys[name] = (vk, extended)
+
+
+def key_up(name: str) -> None:
+    """松开某个键（配合 key_down）。"""
+    vk, extended = _named_key(name)
+    flags = KEYEVENTF_EXTENDEDKEY if extended else 0
+    _send(_key_input(vk, flags | KEYEVENTF_KEYUP))
+    _held_keys.pop(name, None)
+
+
+def release_all_keys() -> None:
+    """松开所有还按着的键。
+
+    这是一条兜底路径（断线、退出键盘页），此时电脑可能正在锁屏，注入会失败 ——
+    失败就算了，但不能因为一个键失败就不管后面的键。
+    """
+    for vk, extended in list(_held_keys.values()):
+        flags = KEYEVENTF_EXTENDEDKEY if extended else 0
+        try:
+            _send(_key_input(vk, flags | KEYEVENTF_KEYUP))
+        except InputError:
+            pass
+    _held_keys.clear()
 
 
 def hotkey(*vks: int, step: float = 0.015) -> None:

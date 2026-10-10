@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import '../core/client.dart';
 import 'common.dart';
 import 'help_sheet.dart';
+import 'keyboard_page.dart';
 import 'pad_page.dart';
 import 'screen_page.dart';
 import 'theme.dart';
@@ -133,6 +134,15 @@ class _HomePageState extends State<HomePage> {
                 onTap: () {
                   Navigator.of(sheet).pop();
                   _openPage(const PadPage());
+                },
+              ),
+              const Gap(8),
+              _MenuItem(
+                title: '键盘',
+                desc: '完整虚拟键盘 · 可以按住不放 · 修饰键锁定',
+                onTap: () {
+                  Navigator.of(sheet).pop();
+                  _openPage(const KeyboardPage());
                 },
               ),
               const Gap(8),
