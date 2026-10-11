@@ -33,6 +33,13 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- 华为/荣耀的挖孔屏适配开关。不声明这个，EMUI 会绕着挖孔把窗口"信箱化"：
+             竖屏挖孔在顶部时看不出问题，一横屏挖孔转到左边，左边就露出一条黑边。
+             真正的 draw 到挖孔底下由主题属性 windowLayoutInDisplayCutoutMode 控制
+             （写在 styles.xml），这里只是告诉 EMUI 别自作主张。 -->
+        <meta-data
+            android:name="android.notch_support"
+            android:value="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

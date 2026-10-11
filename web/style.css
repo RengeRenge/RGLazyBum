@@ -562,31 +562,35 @@ html.modal-open body {
 .kbd-gap { flex: 1 1 0; min-width: 0; }
 
 /* 键盘 +（叫出来之后）触摸板。上下排还是左右排由 JS 加 .vertical / .horizontal
-   决定，触摸板在前还是在后由 .pad-first 决定 —— 都只是改 flex 的方向和 order。 */
+   决定，触摸板在哪一头也由 JS 算出来。
+   三块面板的位置和大小全由 JS 写成 left/top/width/height —— 不用 flex 排：flex 的
+   order / justify-content 改不了就没法过渡，开关触摸板时键盘只能"啪"一下换个地方。
+   绝对定位才有一串连续的目标值可插值，收放才有方向可循。 */
 .kbd-split {
+  position: relative;
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-direction: column;
-  /* 键盘被限高之后会空出一截，多出来的留在上面，键盘贴着底边 */
-  justify-content: flex-end;
-  gap: 8px;
+  overflow: hidden;
 }
-.kbd-split > #kbdArea { order: 0; }
-.kbd-split > #kbdHandle { order: 1; }
-.kbd-split > #kbdPad { order: 2; }
-.kbd-split.pad-first > #kbdArea { order: 2; }
-.kbd-split.pad-first > #kbdPad { order: 0; }
+.kbd-split > #kbdArea,
+.kbd-split > #kbdHandle,
+.kbd-split > #kbdPad {
+  position: absolute;
+}
 
-/* 触摸板的主方向尺寸由 JS 算好写死（拖动改的就是它），键盘吃掉剩下的 */
-.kbd-split.vertical > #kbdArea { flex: 1 1 0; }
-.kbd-split.vertical > #kbdPad { flex: 0 0 auto; }
-.kbd-split.horizontal { flex-direction: row; }
-.kbd-split.horizontal > #kbdArea { flex: 1 1 0; min-width: 0; }
-.kbd-split.horizontal > #kbdPad { flex: 0 0 auto; }
-
-/* 嵌在键盘页里的那块触摸板：外观复用 .pad，高度交给 flex 管 */
+/* 嵌在键盘页里的那块触摸板：外观复用 .pad，高度由 JS 写 */
 .kbd-split > .kbd-pad { height: auto; }
+
+/* 展开 / 收起触摸板：位置和尺寸一起滑，而不是"啪"一下。过渡只在按开关那一瞬间
+   挂上（.kbd-anim，见 app.js 的 kbdAnimateOnce）—— 常驻的话，整页打开时那次
+   "先摆位置"也会跟着慢慢滑，看着像卡了一下。 */
+.kbd-split.kbd-anim > #kbdArea,
+.kbd-split.kbd-anim > #kbdHandle,
+.kbd-split.kbd-anim > #kbdPad {
+  transition: top .24s cubic-bezier(.2,.7,.3,1), left .24s cubic-bezier(.2,.7,.3,1),
+    width .24s cubic-bezier(.2,.7,.3,1), height .24s cubic-bezier(.2,.7,.3,1),
+    border-width .24s cubic-bezier(.2,.7,.3,1);
+}
 
 /* 中间那根小横杆：按住往上 / 往左拖，触摸板就挪到上面 / 左边 */
 .kbd-handle {
@@ -596,6 +600,9 @@ html.modal-open body {
   justify-content: center;
   touch-action: none;
   cursor: grab;
+  /* 收起时高 / 宽压到 0，里面的小横条得跟着看不见 —— 0 尺寸的居中盒子不会
+     自动裁掉溢出的子元素，不夹住的话它会留在原地 */
+  overflow: hidden;
 }
 .kbd-handle i {
   display: block;
@@ -608,8 +615,6 @@ html.modal-open body {
 .kbd-split.vertical .kbd-handle i { width: 64px; height: 8px; }
 .kbd-split.horizontal .kbd-handle { width: 26px; height: 100%; cursor: ew-resize; }
 .kbd-split.horizontal .kbd-handle i { width: 8px; height: 64px; }
-
-.kbd-tip { font-size: 11px; color: #5b6472; text-align: center; padding: 0 8px; }
 
 /* ---------------------------------------------------------------- 屏幕 */
 .shots {

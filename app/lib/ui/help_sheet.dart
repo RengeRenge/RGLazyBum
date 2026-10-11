@@ -33,7 +33,11 @@ void showHelpSheet(BuildContext context) {
       borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
       side: const BorderSide(color: kLine),
     ),
+    // 同菜单弹层：贴在底部，三面都够不到挖孔，只留 bottom
     builder: (sheet) => SafeArea(
+      top: false,
+      left: false,
+      right: false,
       child: ConstrainedBox(
         constraints: BoxConstraints(
           maxHeight: MediaQuery.sizeOf(context).height * 0.82,

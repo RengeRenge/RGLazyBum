@@ -640,7 +640,6 @@
   const kbdSplit = $('#kbdSplit');
   const kbdHandle = $('#kbdHandle');
   const kbdPadEl = $('#kbdPad');
-  const kbdTip = $('#kbdTip');
   const kbdPadBtn = $('#kbdPadBtn');
 
   // 上下排至少要这么高。低于它就左右排 —— 上下排时键盘占 3/5，五行的主键区
@@ -723,52 +722,97 @@
     }
   }
 
-  // animate 只在"展开收起 / 换边"时给 true。打开整页那一下位置还没稳定，
+  // animate 只在"换边"时给 true（走 FLIP）。打开整页那一下位置还没稳定，
   // 直接摆好就行，别播动画。
   function layoutKbdSplit(animate) {
-    kbdHandle.classList.toggle('hidden', !kbdPadShown);
-    kbdPadEl.classList.toggle('hidden', !kbdPadShown);
-    kbdTip.classList.toggle('hidden', kbdPadShown);
     kbdPadBtn.classList.toggle('active', kbdPadShown);
 
     const apply = () => {
-      // 方向要等它真的显示出来才量得准（隐藏时 clientHeight 是 0）
-      const vertical = kbdPadShown && kbdSplit.clientHeight >= KBD_STACK_MIN;
+      // 方向只看这块地方够不够高，跟"触摸板在不在"无关 —— 收起时方向也要留住，
+      // 不然键盘会在收的途中突然翻向。整页没打开时量不出高度（clientHeight 是
+      // 0），先按竖排摆着，打开时会再摆一次。
+      const vertical =
+        kbdSplit.clientHeight === 0 || kbdSplit.clientHeight >= KBD_STACK_MIN;
       kbdSplit.classList.toggle('vertical', vertical);
-      kbdSplit.classList.toggle('horizontal', kbdPadShown && !vertical);
-      kbdSplit.classList.toggle('pad-first', kbdPadFirst);
+      kbdSplit.classList.toggle('horizontal', !vertical);
 
-      // 触摸板占主方向的多少是算出来写死的（不用 flex 比例），拖动才改得动
       const span = vertical ? kbdSplit.clientHeight : kbdSplit.clientWidth;
-      const rest = Math.max(0, span - KBD_HANDLE_SIZE - KBD_PANEL_GAP * 2);
+      const cross = vertical ? kbdSplit.clientWidth : kbdSplit.clientHeight;
       const natural = keyboardNaturalHeight();
+
+      // 收起时这三样一起压到 0：触摸板、横杆、以及它们两侧那道缝
+      const handleSize = kbdPadShown ? KBD_HANDLE_SIZE : 0;
+      const gapVal = kbdPadShown ? KBD_PANEL_GAP : 0;
+      // 横杆和缝先扣掉，剩下的才轮到触摸板和键盘分
+      const avail = Math.max(0, span - handleSize - gapVal * 2);
       // 自动摆法：键盘先拿 min(3/5, 自然高度)，剩下的全给触摸板
       const autoPad = vertical
-        ? rest - Math.min(natural, rest * 0.6)
-        : rest * 0.5;
-      const maxPad = Math.max(KBD_PAD_MIN, rest - KBD_KEYBOARD_MIN);
+        ? avail - Math.min(natural, avail * 0.6)
+        : avail * 0.5;
+      const maxPad = Math.max(KBD_PAD_MIN, avail - KBD_KEYBOARD_MIN);
       // 这里必须按"这一轮的方向"直接取对应那一维 —— 不能用 padManual()，
       // 它读的是上一轮的方向（触摸板隐藏时会被算成横向，把纵向的值读丢）
       const manual = vertical ? kbdPadSizeV : kbdPadSizeH;
-      const padSize = Math.min(Math.max(manual > 0 ? manual : autoPad, KBD_PAD_MIN), maxPad);
+      const wanted = Math.min(
+        Math.max(manual > 0 ? manual : autoPad, KBD_PAD_MIN), maxPad);
       kbdLayoutVertical = vertical;
-      kbdRest = rest;
+      kbdRest = avail;
       kbdPadAuto = autoPad;
-      kbdPadEl.style.height = vertical ? padSize + 'px' : '';
-      kbdPadEl.style.width = vertical ? '' : padSize + 'px';
 
-      // 键盘封顶只在"它自己一个人占这块地方"或者左右排的时候做；
-      // 上下排 + 触摸板在场时尺寸是用户拖出来的，不再硬压
-      kbdArea.style.maxHeight = vertical && kbdPadShown ? '' : natural + 'px';
+      const padSize = kbdPadShown ? wanted : 0;
+      const rest = Math.max(0, avail - padSize);
+
+      // 三块面板用同一套公式摆位，收起时目标值一路算到"贴着自己那一头"为止 ——
+      // 这样触摸板是往它本来待的那头退出去、横杆紧跟在后，而不是越过键盘跑到
+      // 另一头（左右排时横杆跑到最左边就是这么来的）。键盘拿走剩下的整块地方。
+      const padAt = kbdPadFirst ? 0 : rest + handleSize + gapVal * 2;
+      const handleAt = (kbdPadFirst ? padSize : rest) + gapVal;
+      const kbBoxAt = kbdPadFirst ? padSize + handleSize + gapVal * 2 : 0;
+
+      // 键那一摞固定自然高度、贴着底边：给它再多地方也不摊开 —— 摊开的话收放
+      // 途中它是一边平移一边被拉伸，看着就是"先闪一下再滑下去"。
+      const block = Math.min(natural, vertical ? rest : cross);
+
+      // 主方向 = 上下排时的纵轴、左右排时的横轴；另一维照旧铺满
+      const place = (el, mainAt, mainSize, crossAt, crossSize) => {
+        el.style.left = (vertical ? crossAt : mainAt) + 'px';
+        el.style.top = (vertical ? mainAt : crossAt) + 'px';
+        el.style.width = (vertical ? crossSize : mainSize) + 'px';
+        el.style.height = (vertical ? mainSize : crossSize) + 'px';
+      };
+
+      place(kbdArea,
+        vertical ? kbBoxAt + (rest - block) : kbBoxAt,
+        vertical ? block : rest,
+        vertical ? 0 : cross - block,
+        vertical ? cross : block);
+      place(kbdPadEl, padAt, padSize, 0, cross);
+      place(kbdHandle, handleAt, handleSize, 0, cross);
+      // 边框也算在 border-box 的尺寸里：主方向写 0 时它还会撑出 2px 的虚线边
+      kbdPadEl.style.borderWidth = kbdPadShown ? '' : '0';
     };
 
     if (animate) withFlip(apply);
     else apply();
   }
 
+  // 展开 / 收起那一瞬间才挂上尺寸过渡，过一会儿摘掉 —— 常驻的话，整页打开时
+  // 那次"先摆位置"也会跟着慢慢滑，看着像卡了一下。
+  let kbdAnimTimer = null;
+  function kbdAnimateOnce() {
+    kbdSplit.classList.add('kbd-anim');
+    // 先逼一次重排：不逼的话"挂上过渡"和"改尺寸"落在同一次样式变更里，浏览器
+    // 有可能当成本来就是终值，一步跳过去 —— 表现就是没有动画。
+    void kbdSplit.offsetHeight;
+    clearTimeout(kbdAnimTimer);
+    kbdAnimTimer = setTimeout(() => kbdSplit.classList.remove('kbd-anim'), 320);
+  }
+
   kbdPadBtn.addEventListener('click', () => {
     kbdPadShown = !kbdPadShown;
-    layoutKbdSplit(true);
+    kbdAnimateOnce();
+    // 这里不走 withFlip：尺寸是交给 CSS 过渡的，再叠一层 transform 会打架
+    layoutKbdSplit(false);
   });
 
   let kbdDragId = null;

@@ -196,7 +196,7 @@ class _ConnectPageState extends State<ConnectPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
+      body: CutoutSafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(12, 24, 12, 24),
           children: [
@@ -407,7 +407,11 @@ class _QrScanPageState extends State<_QrScanPage> {
             left: 0,
             right: 0,
             bottom: 0,
+            // 底部那条工具条同样碰不到挖孔，只留 bottom
             child: SafeArea(
+              top: false,
+              left: false,
+              right: false,
               child: Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(

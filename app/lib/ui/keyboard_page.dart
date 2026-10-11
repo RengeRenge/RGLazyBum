@@ -261,7 +261,7 @@ class _KeyboardPageState extends State<KeyboardPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
+      body: CutoutSafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -276,16 +276,6 @@ class _KeyboardPageState extends State<KeyboardPage> {
               _tabs(),
               const Gap(8),
               Expanded(child: _split()),
-              // 触摸板出来之后底下就没地方了，这行说明收起来
-              if (!_showPad) ...[
-                const Gap(6),
-                const Text(
-                  '按住＝按下不放（按住 W 就能一直往前走）\n'
-                  'Ctrl / Shift / Alt / Win 点一下锁定，再点一下解锁',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 11, color: kMuted),
-                ),
-              ],
             ],
           ),
         ),
@@ -301,66 +291,73 @@ class _KeyboardPageState extends State<KeyboardPage> {
   /// 两块面板的尺寸是算出来再用 AnimatedPositioned 摆的，不是靠 flex —— flex 的
   /// order 没法过渡，换边就成了"啪一下跳过去"。自己算位置才能让它滑过去。
   Widget _split() {
-    // 没叫触摸板的时候整页高度本来都给键盘，五行的键会被拉成细高条，所以同样
-    // 要封顶；多出来的地方空着，键盘贴着底边放。
-    if (!_showPad) {
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          final natural = _keyboardNaturalHeight;
-          return Align(
-            alignment: Alignment.bottomCenter,
-            child: SizedBox(
-              width: double.infinity,
-              height: natural < constraints.maxHeight
-                  ? natural
-                  : constraints.maxHeight,
-              child: _keyboard(),
-            ),
-          );
-        },
-      );
-    }
-
     return LayoutBuilder(
       builder: (context, constraints) {
         // 看的是"这块地方能分到多高"，不是整块屏幕的高度
         final vertical = constraints.maxHeight >= _stackMinHeight;
         final span = vertical ? constraints.maxHeight : constraints.maxWidth;
-        // 横杆和它两侧的缝先扣掉，剩下的才分给两块面板
-        final rest = (span - _handleTouch - _gap * 2).clamp(0.0, double.infinity);
+        final cross = vertical ? constraints.maxWidth : constraints.maxHeight;
+        final natural = _keyboardNaturalHeight;
+
+        // 收起触摸板不是"把它从树里摘掉" —— 换了子树就没有中间帧可画，开关
+        // 永远是"啪"一下。改成把触摸板、横杆、以及它们两侧那道缝一起压到 0，
+        // 三块面板始终留在树里，AnimatedPositioned 才有得插值。
+        final handleSize = _showPad ? _handleTouch : 0.0;
+        final gapVal = _showPad ? _gap : 0.0;
+        // 横杆和缝先扣掉，剩下的才轮到触摸板和键盘分
+        final avail = (span - handleSize - gapVal * 2).clamp(0.0, span);
         // 自动摆法：键盘先拿 min(3/5, 它需要的自然高度)，剩下的全给触摸板 ——
         // 这样刚叫出来的时候键不会很长、也没有空白
-        final natural = _keyboardNaturalHeight;
         final autoPad = vertical
-            ? rest - (natural < rest * 0.6 ? natural : rest * 0.6)
-            : rest * 0.5;
-        final maxPad = (rest - _keyboardMinSize).clamp(_padMinSize, rest);
+            ? avail - (natural < avail * 0.6 ? natural : avail * 0.6)
+            : avail * 0.5;
+        final maxPad = (avail - _keyboardMinSize).clamp(_padMinSize, avail);
         // 拖动回调里拿不到约束，这几个先记下来
-        _layoutRest = rest;
+        _layoutRest = avail;
         _autoPadSize = autoPad;
         // 按"这一轮的方向"直接取对应那一维，不要读 _layoutVertical —— 触摸板
         // 隐藏时它还是上一次的值，会把另一维的值读过来
         final manual = vertical ? _padSizeVertical : _padSizeHorizontal;
-        final padSize = (manual > 0 ? manual : autoPad).clamp(_padMinSize, maxPad);
-        final keyboardSize = rest - padSize;
+        final padWanted =
+            (manual > 0 ? manual : autoPad).clamp(_padMinSize, maxPad);
         // 拖动改尺寸时要知道改哪一维
         _layoutVertical = vertical;
 
-        // 拖动改的是尺寸，不能走缓动，否则黏手；只有换边才交给动画
+        final padSize = _showPad ? padWanted : 0.0;
+        final rest = (avail - padSize).clamp(0.0, span);
+
+        // 三块面板用同一套公式摆位，收起时目标值一路算到"贴着自己那一头"为止 ——
+        // 这样触摸板是往它本来待的那头退出去、横杆紧跟在后，而不是越过键盘跑到
+        // 另一头（左右排时横杆跑到最左边就是这么来的）。键盘拿走剩下的整块地方。
+        final padAt = _padFirst ? 0.0 : rest + handleSize + gapVal * 2;
+        final handleAt = (_padFirst ? padSize : rest) + gapVal;
+        final kbBoxAt = _padFirst ? padSize + handleSize + gapVal * 2 : 0.0;
+
+        // 键那一摞固定自然高度、贴着底边：给它再多地方也不摊开 —— 摊开的话收放
+        // 途中它是一边平移一边被拉伸，看着就是"先闪一下再滑下去"。
+        final block = natural.clamp(0.0, vertical ? rest : cross);
+        final kbMainSize = vertical ? block : rest;
+        final kbMainAt = vertical ? kbBoxAt + (rest - block) : kbBoxAt;
+        final kbCrossSize = vertical ? cross : block;
+
+        // 拖动改的是尺寸，不能走缓动，否则黏手；换边和开关都交给动画
         final duration = _dragging ? Duration.zero : _flipDuration;
 
+        // 主方向 = 上下排时的纵轴、左右排时的横轴；另一维照旧铺满
         Widget place({
-          required double start,
+          required double at,
           required double size,
+          required double crossAt,
+          required double crossSize,
           required Widget child,
         }) {
           return AnimatedPositioned(
             duration: duration,
             curve: Curves.easeOutCubic,
-            left: vertical ? 0 : start,
-            top: vertical ? start : 0,
-            width: vertical ? constraints.maxWidth : size,
-            height: vertical ? size : constraints.maxHeight,
+            left: vertical ? crossAt : at,
+            top: vertical ? at : crossAt,
+            width: vertical ? crossSize : size,
+            height: vertical ? size : crossSize,
             child: child,
           );
         }
@@ -371,18 +368,24 @@ class _KeyboardPageState extends State<KeyboardPage> {
             // 键盘压在下面、触摸板在上面：换边时触摸板从键盘上方滑过去，
             // 看着才像"挪过去了"而不是闪现
             place(
-              start: _padFirst ? padSize + _handleTouch + _gap * 2 : 0,
-              size: keyboardSize,
+              at: kbMainAt,
+              size: kbMainSize,
+              crossAt: vertical ? 0 : cross - kbCrossSize,
+              crossSize: kbCrossSize,
               child: _keyboard(),
             ),
             place(
-              start: _padFirst ? 0 : keyboardSize + _handleTouch + _gap * 2,
+              at: padAt,
               size: padSize,
+              crossAt: 0,
+              crossSize: vertical ? constraints.maxWidth : constraints.maxHeight,
               child: const TouchPad(),
             ),
             place(
-              start: (_padFirst ? padSize : keyboardSize) + _gap,
-              size: _handleTouch,
+              at: handleAt,
+              size: handleSize,
+              crossAt: 0,
+              crossSize: vertical ? constraints.maxWidth : constraints.maxHeight,
               child: _dragHandle(vertical),
             ),
           ],

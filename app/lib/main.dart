@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/client.dart';
@@ -14,6 +15,23 @@ import 'ui/home_page.dart';
 import 'ui/theme.dart';
 
 void main() {
+  // SystemChrome 要等 binding 起来才调得动
+  WidgetsFlutterBinding.ensureInitialized();
+  // 铺满整屏：内容画到状态栏 / 导航栏底下，系统不再给窗口留边。
+  // 挖孔屏那圈黑边还得靠 res/values*/styles.xml 里的主题属性
+  // windowLayoutInDisplayCutoutMode=shortEdges 才能去掉 —— 同一份属性写在
+  // manifest 的 <activity> 上不生效（它不是 manifest 属性，是主题属性）。
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // 系统栏自己别画底色，露出下面我们这层深色背景；图标用浅色，压在深色上才看得清
+  SystemChrome.setSystemUIOverlayStyle(
+    const SystemUiOverlayStyle(
+      statusBarColor: Colors.transparent,
+      statusBarIconBrightness: Brightness.light,
+      systemNavigationBarColor: Colors.transparent,
+      systemNavigationBarDividerColor: Colors.transparent,
+      systemNavigationBarIconBrightness: Brightness.light,
+    ),
+  );
   runApp(const RGLazyBumApp());
 }
 

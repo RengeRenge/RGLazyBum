@@ -141,7 +141,7 @@ class _ScreenPageState extends State<ScreenPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SafeArea(
+      body: CutoutSafeArea(
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(

@@ -29,6 +29,36 @@ void showToast(String message, {bool error = false}) {
   );
 }
 
+/// 挖孔屏安全区：跟 [SafeArea] 一样躲开系统栏和挖孔，但左右按较大的那一边
+/// **对称**内缩。
+///
+/// 横屏时挖孔转到屏幕一侧，Android 会把**整条**那条边都报成内缩值（这台机器
+/// 上是 117px）——内缩只有四个数，表达不了"挖孔其实只占边上的一小块"。原样
+/// 吃掉的话内容会被整条推向对面，左右看着就不对称。这里两边取 max 一起缩，
+/// 既压不到挖孔，看着也是正的；代价是横屏每侧多让出一点宽度。
+class CutoutSafeArea extends StatelessWidget {
+  const CutoutSafeArea({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final insets = MediaQuery.paddingOf(context);
+    final side = insets.left > insets.right ? insets.left : insets.right;
+    return Padding(
+      padding: EdgeInsets.only(
+        top: insets.top,
+        bottom: insets.bottom,
+        left: side,
+        right: side,
+      ),
+      // 跟 SafeArea 一样，把已经吃掉的 padding 从子树上摘掉，
+      // 免得里面再套一层又缩一遍
+      child: MediaQuery.removePadding(context: context, child: child),
+    );
+  }
+}
+
 /// 前台窗口是管理员进程时的说明。
 ///
 /// Windows 的 UIPI 规定低权限进程不能往高权限窗口注入输入，而且 SendInput 是

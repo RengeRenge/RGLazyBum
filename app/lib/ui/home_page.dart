@@ -112,12 +112,23 @@ class _HomePageState extends State<HomePage> {
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: kCard,
+      // 不放开这个开关，弹层高度会被卡在屏幕的 9/16（横屏 2224px 只剩 1251px），
+      // 而这几项竖排下来要 1500 多 px —— 最后一项和「关闭」按钮会连同底部安全区
+      // 一起被裁到屏幕外，看着就像"底部没留安全区"。放开后交给下面的滚动兜底。
+      isScrollControlled: true,
       shape: RoundedRectangleBorder(
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         side: const BorderSide(color: kLine),
       ),
+      // 弹层贴在屏幕底部，横屏时挖孔在左上角、竖屏在顶部，三面都够不到，
+      // 所以 top / left / right 都不缩，只留 bottom 躲开导航条。
+      // （外边那圈横向留白是 M3 给模态弹层内置的 640dp 宽度上限居中造成的，
+      // 跟安全区无关，别去动它。）
       builder: (sheet) => SafeArea(
-        child: Padding(
+        top: false,
+        left: false,
+        right: false,
+        child: SingleChildScrollView(
           padding: const EdgeInsets.all(18),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -197,25 +208,27 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: ListenableBuilder(
-        listenable: _client,
-        builder: (context, _) => Column(
-          children: [
-            _topBar(context),
-            Expanded(
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
-                children: [
-                  _volumeCard(),
-                  _mediaCard(),
-                  _textCard(),
-                  _audioCard(),
-                  _windowCard(),
-                  _powerCard(),
-                ],
+      body: CutoutSafeArea(
+        child: ListenableBuilder(
+          listenable: _client,
+          builder: (context, _) => Column(
+            children: [
+              _topBar(context),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 24),
+                  children: [
+                    _volumeCard(),
+                    _mediaCard(),
+                    _textCard(),
+                    _audioCard(),
+                    _windowCard(),
+                    _powerCard(),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -223,12 +236,8 @@ class _HomePageState extends State<HomePage> {
 
   Widget _topBar(BuildContext context) {
     return Container(
-      padding: EdgeInsets.only(
-        top: MediaQuery.paddingOf(context).top + 10,
-        left: 12,
-        right: 12,
-        bottom: 10,
-      ),
+      // 顶部那块安全区由外层 CutoutSafeArea 负责，这里只负责自己那 10 的间距
+      padding: const EdgeInsets.only(top: 10, left: 12, right: 12, bottom: 10),
       decoration: const BoxDecoration(
         color: kBg,
         border: Border(bottom: BorderSide(color: kLine)),
@@ -582,7 +591,11 @@ class _HomePageState extends State<HomePage> {
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         side: const BorderSide(color: kLine),
       ),
+      // 同菜单弹层：贴在底部，三面都够不到挖孔，只留 bottom
       builder: (sheet) => SafeArea(
+        top: false,
+        left: false,
+        right: false,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
